@@ -1,5 +1,5 @@
 /**
- * AWS Pentest MCP Server - Utility Module
+ * Nimbus - AWS Security Assessment MCP Server - Utility Module
  * 
  * Features:
  * - Caching for repeated API calls

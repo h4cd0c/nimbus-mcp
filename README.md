@@ -1,12 +1,12 @@
 <div align="center">
 
-# 🔒 AWS Penetration Testing MCP Server
+# Nimbus - AWS Security Assessment MCP Server
 
-[![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)](https://github.com/jaikumar3/aws-pentest-mcp)
-[![Tools](https://img.shields.io/badge/tools-43-green.svg)](https://github.com/jaikumar3/aws-pentest-mcp)
+[![Version](https://img.shields.io/badge/version-1.4.2-blue.svg)](https://github.com/jaikumar3/nimbus-mcp)
+[![Tools](https://img.shields.io/badge/tools-43-green.svg)](https://github.com/jaikumar3/nimbus-mcp)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 [![AWS SDK](https://img.shields.io/badge/AWS%20SDK-v3-yellow.svg)](https://aws.amazon.com/sdk-for-javascript/)
-[![Status](https://img.shields.io/badge/status-production%20ready-brightgreen.svg)](https://github.com/jaikumar3/aws-pentest-mcp)
+[![Status](https://img.shields.io/badge/status-production%20ready-brightgreen.svg)](https://github.com/jaikumar3/nimbus-mcp)
 [![Tests](https://img.shields.io/badge/tests-Jest-green.svg)](https://jestjs.io/)
 
 **Enterprise-grade AWS security assessment toolkit with Multi-Region Scanning & TRA capabilities**
@@ -21,7 +21,7 @@
 
 ## 📖 Overview
 
-The **AWS Penetration Testing MCP Server** is a comprehensive security assessment framework built on the Model Context Protocol (MCP). It provides 43 production-ready tools covering enumeration, vulnerability scanning, privilege escalation analysis, persistence detection, EKS/Kubernetes security, **multi-region scanning**, and compliance reporting for AWS cloud environments.
+**Nimbus** is a comprehensive AWS security assessment framework built on the Model Context Protocol (MCP). It provides 43 production-ready tools covering enumeration, vulnerability scanning, privilege escalation analysis, persistence detection, EKS/Kubernetes security, **multi-region scanning**, and compliance reporting for AWS cloud environments.
 
 ### 🎯 Use Cases
 
@@ -113,8 +113,8 @@ The **AWS Penetration Testing MCP Server** is a comprehensive security assessmen
 
 ```bash
 # Clone the repository
-git clone https://github.com/jaikumar3/aws-pentest-mcp.git
-cd aws-pentest-mcp
+git clone https://github.com/jaikumar3/nimbus-mcp.git
+cd nimbus-mcp
 
 # Install dependencies
 npm install
@@ -589,8 +589,8 @@ We welcome contributions! Here's how to get started:
 
 ```bash
 # 1. Fork and clone
-git clone https://github.com/yourusername/aws-pentest-mcp.git
-cd aws-pentest-mcp
+git clone https://github.com/yourusername/nimbus-mcp.git
+cd nimbus-mcp
 
 # 2. Create feature branch
 git checkout -b feature/new-service-scanner
@@ -684,7 +684,7 @@ If this tool helps your security assessments, please:
 **Built with:** TypeScript • AWS SDK v3 • MCP SDK v1.0.4
 
 **Author:** [jaikumar3](https://github.com/jaikumar3)  
-**Repository:** [aws-pentest-mcp](https://github.com/jaikumar3/aws-pentest-mcp)
+**Repository:** [nimbus-mcp](https://github.com/jaikumar3/nimbus-mcp)
 
 ---
 

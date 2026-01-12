@@ -97,8 +97,8 @@ const cloudwatchClient = new CloudWatchClient({ region: DEFAULT_REGION });
 // Server setup
 const server = new Server(
   {
-    name: "aws-pentest-mcp",
-    version: "1.0.0",
+    name: "nimbus-mcp",
+    version: "1.4.2",
   },
   {
     capabilities: {
@@ -423,7 +423,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: "generate_tra_report",
-    description: "Generate comprehensive Threat & Risk Assessment (TRA) report: risk scoring, compliance mapping (CIS/NIST/PCI), asset inventory, threat intelligence, remediation roadmap",
+    description: "Generate comprehensive Threat & Risk Assessment (TRA) security report with findings summary and remediation recommendations",
     inputSchema: {
       type: "object",
       properties: {
@@ -433,13 +433,13 @@ const TOOLS: Tool[] = [
         },
         framework: {
           type: "string",
-          description: "Compliance framework: 'cis' (CIS AWS Foundations), 'nist' (NIST 800-53), 'pci' (PCI-DSS), 'all' (default)",
-          enum: ["cis", "nist", "pci", "hipaa", "all"],
+          description: "Compliance framework: 'cis' (CIS AWS), 'nist' (NIST 800-53), 'pci' (PCI-DSS), 'all' (default)",
+          enum: ["cis", "nist", "pci", "all"],
         },
         format: {
           type: "string",
-          description: "Output format: 'markdown' (default), 'pdf', 'html'",
-          enum: ["markdown", "pdf", "html"],
+          description: "Output format: 'markdown' (default), 'pdf', 'html', 'csv'",
+          enum: ["markdown", "pdf", "html", "csv"],
         },
         outputFile: {
           type: "string",
@@ -893,7 +893,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "generate_tra_report":
         if (!args || !args.region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await generateTRAReport(args.region as string, args.framework as string | undefined, args.format as string | undefined, args.outputFile as string | undefined) }] };
+        return { content: [{ type: "text", text: await generateTRAReport(
+          args.region as string, 
+          args.framework as string | undefined, 
+          args.format as string | undefined, 
+          args.outputFile as string | undefined
+        ) }] };
 
       case "analyze_infrastructure_automation":
         if (!args || !args.region) throw new Error("region is required");
@@ -1025,8 +1030,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 function getCacheStats(): string {
   const stats = cache.stats();
   
-  let output = `# 📊 Cache Statistics\n\n`;
-  output += `**Status:** Enabled ✅\n`;
+  let output = `# Cache Statistics\n\n`;
+  output += `**Status:** Enabled [OK]\n`;
   output += `**Cached Items:** ${stats.size}\n\n`;
   
   if (stats.size > 0) {
@@ -1048,7 +1053,7 @@ function getCacheStats(): string {
   
   output += `\n## Cache Benefits\n\n`;
   output += `- ⚡ **Speed:** Repeated scans return instantly from cache\n`;
-  output += `- 🛡️ **Rate Limits:** Reduces AWS API calls, avoids throttling\n`;
+  output += `-  **Rate Limits:** Reduces AWS API calls, avoids throttling\n`;
   output += `- 💾 **TTL:** Cache auto-expires (5 min default)\n\n`;
   output += `## Commands\n\n`;
   output += `- \`cache_stats\` - View this report\n`;
@@ -1071,12 +1076,12 @@ function clearCache(pattern?: string): string {
       }
     }
     
-    return `✅ Cleared ${cleared} cached items matching "${pattern}"`;
+    return `[OK] Cleared ${cleared} cached items matching "${pattern}"`;
   } else {
     // Clear all
     const count = cache.stats().size;
     cache.clear();
-    return `✅ Cleared all ${count} cached items. Fresh data will be fetched on next scan.`;
+    return `[OK] Cleared all ${count} cached items. Fresh data will be fetched on next scan.`;
   }
 }
 
@@ -1085,7 +1090,7 @@ function clearCache(pattern?: string): string {
 function getHelpText(): string {
   return `# AWS Penetration Testing MCP Server v1.0.0
 
-## 🎯 Available Tools (27 Total)
+##  Available Tools (27 Total)
 
 ### Enumeration Tools (10)
 
@@ -1229,11 +1234,11 @@ function getHelpText(): string {
 - **Built-in examples** - Each tool returns actionable findings
 
 ## 🔍 Common Findings
-- 🔴 CRITICAL: Public EC2 instances, open management ports, wildcard IAM
-- 🟠 HIGH: Unencrypted S3/RDS, old access keys, Lambda secrets in env vars
-- 🟡 MEDIUM: No KMS rotation, insufficient backups, EKS without logging
+- [CRITICAL] CRITICAL: Public EC2 instances, open management ports, wildcard IAM
+- [HIGH] HIGH: Unencrypted S3/RDS, old access keys, Lambda secrets in env vars
+- [MEDIUM] MEDIUM: No KMS rotation, insufficient backups, EKS without logging
 
-## ⚠️ Authentication Required
+## [WARN] Authentication Required
 Run \`aws configure\` before using tools. Default region: ${DEFAULT_REGION}
 `;
 }
@@ -1252,7 +1257,7 @@ async function whoami(region?: string): Promise<string> {
 **ARN:** ${response.Arn}
 **Region:** ${region || DEFAULT_REGION}
 
-✅ Successfully authenticated to AWS
+[OK] Successfully authenticated to AWS
 `;
 }
 
@@ -1364,7 +1369,7 @@ async function enumerateEC2Instances(region: string): Promise<string> {
   const cacheKey = `ec2:instances:${region}`;
   const cached = cache.get<string>(cacheKey);
   if (cached) {
-    return cached + `\n\n*📦 Cached result (use \`cache_clear pattern: "ec2"\` for fresh data)*`;
+    return cached + `\n\n* Cached result (use \`cache_clear pattern: "ec2"\` for fresh data)*`;
   }
 
   const client = new EC2Client({ region });
@@ -1399,10 +1404,10 @@ async function enumerateEC2Instances(region: string): Promise<string> {
       output += `- **IAM Role:** ${iamRole}\n\n`;
 
       if (publicIp !== "None") {
-        findings.push(`🔴 CRITICAL: Instance ${instanceId} has public IP ${publicIp} - potential attack surface`);
+        findings.push(`[CRITICAL] CRITICAL: Instance ${instanceId} has public IP ${publicIp} - potential attack surface`);
       }
       if (iamRole !== "None") {
-        findings.push(`🟡 INFO: Instance ${instanceId} has IAM role ${iamRole} - check for privilege escalation`);
+        findings.push(`[MEDIUM] INFO: Instance ${instanceId} has IAM role ${iamRole} - check for privilege escalation`);
       }
     }
   }
@@ -1544,29 +1549,29 @@ async function scanS3BucketSecurity(bucketName: string): Promise<string> {
       if (grantee?.URI === "http://acs.amazonaws.com/groups/global/AllUsers") {
         if (permission === "READ") {
           hasPublicRead = true;
-          findings.push("🔴 CRITICAL: Bucket ACL grants public READ access to everyone");
+          findings.push("[CRITICAL] CRITICAL: Bucket ACL grants public READ access to everyone");
         }
         if (permission === "WRITE") {
           hasPublicWrite = true;
-          findings.push("🔴 CRITICAL: Bucket ACL grants public WRITE access to everyone");
+          findings.push("[CRITICAL] CRITICAL: Bucket ACL grants public WRITE access to everyone");
         }
         if (permission === "FULL_CONTROL") {
-          findings.push("🔴 CRITICAL: Bucket ACL grants FULL_CONTROL to everyone - complete compromise!");
+          findings.push("[CRITICAL] CRITICAL: Bucket ACL grants FULL_CONTROL to everyone - complete compromise!");
         }
       }
       
       // Check for authenticated users (any AWS account)
       if (grantee?.URI === "http://acs.amazonaws.com/groups/global/AuthenticatedUsers") {
-        findings.push(`🟠 HIGH: Bucket ACL grants ${permission} to all authenticated AWS users`);
+        findings.push(`[HIGH] HIGH: Bucket ACL grants ${permission} to all authenticated AWS users`);
       }
     }
     
-    output += `- Public READ: ${hasPublicRead ? "❌ YES (CRITICAL)" : "✅ No"}\n`;
-    output += `- Public WRITE: ${hasPublicWrite ? "❌ YES (CRITICAL)" : "✅ No"}\n`;
+    output += `- Public READ: ${hasPublicRead ? "[FAIL] YES (CRITICAL)" : "[OK] No"}\n`;
+    output += `- Public WRITE: ${hasPublicWrite ? "[FAIL] YES (CRITICAL)" : "[OK] No"}\n`;
     output += `- Total Grants: ${grants.length}\n\n`;
     
   } catch (error: any) {
-    output += `## 3. ACL: ⚠️ Could not retrieve ACL\n\n`;
+    output += `## 3. ACL: [WARN] Could not retrieve ACL\n\n`;
   }
 
   // 4. Check if bucket policy is public
@@ -1575,13 +1580,13 @@ async function scanS3BucketSecurity(bucketName: string): Promise<string> {
     const policyStatus = await s3Client.send(policyStatusCommand);
     
     if (policyStatus.PolicyStatus?.IsPublic) {
-      findings.push("🔴 CRITICAL: AWS confirms bucket policy is PUBLIC");
-      output += `## 4. Policy Status: ❌ BUCKET IS PUBLIC\n\n`;
+      findings.push("[CRITICAL] CRITICAL: AWS confirms bucket policy is PUBLIC");
+      output += `## 4. Policy Status: [FAIL] BUCKET IS PUBLIC\n\n`;
     } else {
-      output += `## 4. Policy Status: ✅ Not public\n\n`;
+      output += `## 4. Policy Status: [OK] Not public\n\n`;
     }
   } catch (error: any) {
-    output += `## 4. Policy Status: ⚠️ Could not retrieve\n\n`;
+    output += `## 4. Policy Status: [WARN] Could not retrieve\n\n`;
   }
 
   // 5. Check encryption
@@ -1592,7 +1597,7 @@ async function scanS3BucketSecurity(bucketName: string): Promise<string> {
     const kmsKeyId = encryption.ServerSideEncryptionConfiguration?.Rules?.[0]?.ApplyServerSideEncryptionByDefault?.KMSMasterKeyID;
     
     output += `## 5. Encryption\n`;
-    output += `- Enabled: ✅ Yes\n`;
+    output += `- Enabled: [OK] Yes\n`;
     output += `- Algorithm: ${algorithm}\n`;
     if (kmsKeyId) {
       output += `- KMS Key: ${kmsKeyId}\n`;
@@ -1600,10 +1605,10 @@ async function scanS3BucketSecurity(bucketName: string): Promise<string> {
     output += `\n`;
   } catch (error: any) {
     if (error.name === "ServerSideEncryptionConfigurationNotFoundError") {
-      findings.push("🟠 HIGH: Server-side encryption not enabled - data at rest not protected");
-      output += `## 5. Encryption: ❌ Not enabled\n\n`;
+      findings.push("[HIGH] HIGH: Server-side encryption not enabled - data at rest not protected");
+      output += `## 5. Encryption: [FAIL] Not enabled\n\n`;
     } else {
-      output += `## 5. Encryption: ⚠️ Could not retrieve\n\n`;
+      output += `## 5. Encryption: [WARN] Could not retrieve\n\n`;
     }
   }
 
@@ -1614,17 +1619,17 @@ async function scanS3BucketSecurity(bucketName: string): Promise<string> {
     
     output += `## 6. Versioning\n`;
     const status = versioning.Status || "Disabled";
-    output += `- Status: ${status === "Enabled" ? "✅" : "❌"} ${status}\n`;
-    output += `- MFA Delete: ${versioning.MFADelete === "Enabled" ? "✅ Enabled" : "❌ Disabled"}\n\n`;
+    output += `- Status: ${status === "Enabled" ? "[OK]" : "[FAIL]"} ${status}\n`;
+    output += `- MFA Delete: ${versioning.MFADelete === "Enabled" ? "[OK] Enabled" : "[FAIL] Disabled"}\n\n`;
     
     if (status !== "Enabled") {
-      findings.push("🟡 MEDIUM: Versioning not enabled - cannot recover from accidental deletion");
+      findings.push("[MEDIUM] MEDIUM: Versioning not enabled - cannot recover from accidental deletion");
     }
     if (versioning.MFADelete !== "Enabled") {
-      findings.push("🟡 MEDIUM: MFA Delete not enabled - no protection against malicious deletion");
+      findings.push("[MEDIUM] MEDIUM: MFA Delete not enabled - no protection against malicious deletion");
     }
   } catch (error: any) {
-    output += `## 6. Versioning: ⚠️ Could not retrieve versioning status\n\n`;
+    output += `## 6. Versioning: [WARN] Could not retrieve versioning status\n\n`;
   }
 
   // 7. Check logging
@@ -1634,30 +1639,30 @@ async function scanS3BucketSecurity(bucketName: string): Promise<string> {
     
     output += `## 7. Access Logging\n`;
     if (logging.LoggingEnabled) {
-      output += `- Enabled: ✅ Yes\n`;
+      output += `- Enabled: [OK] Yes\n`;
       output += `- Target Bucket: ${logging.LoggingEnabled.TargetBucket}\n`;
       output += `- Target Prefix: ${logging.LoggingEnabled.TargetPrefix || "/"}\n\n`;
     } else {
-      output += `- Enabled: ❌ No\n\n`;
-      findings.push("🟡 MEDIUM: Access logging not enabled - cannot audit bucket access");
+      output += `- Enabled: [FAIL] No\n\n`;
+      findings.push("[MEDIUM] MEDIUM: Access logging not enabled - cannot audit bucket access");
     }
   } catch (error: any) {
-    output += `## 7. Access Logging: ⚠️ Could not retrieve logging status\n\n`;
+    output += `## 7. Access Logging: [WARN] Could not retrieve logging status\n\n`;
   }
 
   // Summary
   output += `## Security Findings Summary (${findings.length})\n\n`;
   if (findings.length === 0) {
-    output += `✅ No security issues found - bucket is well-configured!\n`;
+    output += `[OK] No security issues found - bucket is well-configured!\n`;
   } else {
-    const critical = findings.filter(f => f.includes("🔴")).length;
-    const high = findings.filter(f => f.includes("🟠")).length;
-    const medium = findings.filter(f => f.includes("🟡")).length;
+    const critical = findings.filter(f => f.includes("[CRITICAL]")).length;
+    const high = findings.filter(f => f.includes("[HIGH]")).length;
+    const medium = findings.filter(f => f.includes("[MEDIUM]")).length;
     
     output += `**Severity Breakdown:**\n`;
-    output += `- 🔴 CRITICAL: ${critical}\n`;
-    output += `- 🟠 HIGH: ${high}\n`;
-    output += `- 🟡 MEDIUM: ${medium}\n\n`;
+    output += `- [CRITICAL] CRITICAL: ${critical}\n`;
+    output += `- [HIGH] HIGH: ${high}\n`;
+    output += `- [MEDIUM] MEDIUM: ${medium}\n\n`;
     
     output += `**Findings:**\n`;
     findings.forEach(f => output += `${f}\n`);
@@ -1690,13 +1695,13 @@ async function enumerateIAMUsers(): Promise<string> {
     // Check for old users
     const daysSinceCreation = user.CreateDate ? Math.floor((Date.now() - user.CreateDate.getTime()) / (1000 * 60 * 60 * 24)) : 0;
     if (daysSinceCreation > 365) {
-      findings.push(`🟡 INFO: User ${user.UserName} created ${daysSinceCreation} days ago - review if still needed`);
+      findings.push(`[MEDIUM] INFO: User ${user.UserName} created ${daysSinceCreation} days ago - review if still needed`);
     }
 
     // Check password usage
     const daysSincePasswordUse = user.PasswordLastUsed ? Math.floor((Date.now() - user.PasswordLastUsed.getTime()) / (1000 * 60 * 60 * 24)) : 999;
     if (daysSincePasswordUse > 90 && user.PasswordLastUsed) {
-      findings.push(`🟠 MEDIUM: User ${user.UserName} hasn't used password in ${daysSincePasswordUse} days - potential inactive account`);
+      findings.push(`[HIGH] MEDIUM: User ${user.UserName} hasn't used password in ${daysSincePasswordUse} days - potential inactive account`);
     }
 
     output += `\n`;
@@ -1715,7 +1720,7 @@ async function enumerateIAMRoles(): Promise<string> {
   const cacheKey = `iam:roles`;
   const cached = cache.get<string>(cacheKey);
   if (cached) {
-    return cached + `\n\n*📦 Cached result (use \`cache_clear pattern: "iam"\` for fresh data)*`;
+    return cached + `\n\n* Cached result (use \`cache_clear pattern: "iam"\` for fresh data)*`;
   }
 
   const command = new ListRolesCommand({});
@@ -1737,7 +1742,7 @@ async function enumerateIAMRoles(): Promise<string> {
     // Check trust policy for wildcards
     const trustPolicy = role.AssumeRolePolicyDocument ? JSON.parse(decodeURIComponent(role.AssumeRolePolicyDocument)) : null;
     if (trustPolicy && JSON.stringify(trustPolicy).includes("*")) {
-      findings.push(`🔴 CRITICAL: Role ${role.RoleName} has wildcard (*) in trust policy - potential privilege escalation risk`);
+      findings.push(`[CRITICAL] CRITICAL: Role ${role.RoleName} has wildcard (*) in trust policy - potential privilege escalation risk`);
     }
 
     output += `\n`;
@@ -1781,19 +1786,19 @@ async function enumerateRDSDatabases(region: string): Promise<string> {
     output += `## Instance: ${db.DBInstanceIdentifier}\n`;
     output += `- **Engine:** ${db.Engine} ${db.EngineVersion}\n`;
     output += `- **Status:** ${db.DBInstanceStatus}\n`;
-    output += `- **Publicly Accessible:** ${db.PubliclyAccessible ? "⚠️ YES" : "✅ No"}\n`;
-    output += `- **Encrypted:** ${db.StorageEncrypted ? "✅ Yes" : "❌ No"}\n`;
-    output += `- **Multi-AZ:** ${db.MultiAZ ? "✅ Yes" : "❌ No"}\n`;
+    output += `- **Publicly Accessible:** ${db.PubliclyAccessible ? "[WARN] YES" : "[OK] No"}\n`;
+    output += `- **Encrypted:** ${db.StorageEncrypted ? "[OK] Yes" : "[FAIL] No"}\n`;
+    output += `- **Multi-AZ:** ${db.MultiAZ ? "[OK] Yes" : "[FAIL] No"}\n`;
     output += `- **Backup Retention:** ${db.BackupRetentionPeriod} days\n\n`;
 
     if (db.PubliclyAccessible) {
-      findings.push(`🔴 CRITICAL: RDS instance ${db.DBInstanceIdentifier} is publicly accessible - exposed to Internet`);
+      findings.push(`[CRITICAL] CRITICAL: RDS instance ${db.DBInstanceIdentifier} is publicly accessible - exposed to Internet`);
     }
     if (!db.StorageEncrypted) {
-      findings.push(`🟠 HIGH: RDS instance ${db.DBInstanceIdentifier} not encrypted at rest`);
+      findings.push(`[HIGH] HIGH: RDS instance ${db.DBInstanceIdentifier} not encrypted at rest`);
     }
     if ((db.BackupRetentionPeriod || 0) < 7) {
-      findings.push(`🟡 MEDIUM: RDS instance ${db.DBInstanceIdentifier} has insufficient backup retention (${db.BackupRetentionPeriod} days)`);
+      findings.push(`[MEDIUM] MEDIUM: RDS instance ${db.DBInstanceIdentifier} has insufficient backup retention (${db.BackupRetentionPeriod} days)`);
     }
   }
 
@@ -1802,11 +1807,11 @@ async function enumerateRDSDatabases(region: string): Promise<string> {
     output += `## Cluster: ${cluster.DBClusterIdentifier}\n`;
     output += `- **Engine:** ${cluster.Engine} ${cluster.EngineVersion}\n`;
     output += `- **Status:** ${cluster.Status}\n`;
-    output += `- **Encrypted:** ${cluster.StorageEncrypted ? "✅ Yes" : "❌ No"}\n`;
+    output += `- **Encrypted:** ${cluster.StorageEncrypted ? "[OK] Yes" : "[FAIL] No"}\n`;
     output += `- **Members:** ${cluster.DBClusterMembers?.length || 0}\n\n`;
 
     if (!cluster.StorageEncrypted) {
-      findings.push(`🟠 HIGH: RDS cluster ${cluster.DBClusterIdentifier} not encrypted at rest`);
+      findings.push(`[HIGH] HIGH: RDS cluster ${cluster.DBClusterIdentifier} not encrypted at rest`);
     }
   }
 
@@ -1874,7 +1879,7 @@ async function enumerateLambdaFunctions(region: string): Promise<string> {
 
     // Check for old runtimes
     if (func.Runtime?.includes("python2") || func.Runtime?.includes("node10") || func.Runtime?.includes("node12")) {
-      findings.push(`🔴 CRITICAL: Lambda ${func.FunctionName} uses deprecated runtime ${func.Runtime} - security risk`);
+      findings.push(`[CRITICAL] CRITICAL: Lambda ${func.FunctionName} uses deprecated runtime ${func.Runtime} - security risk`);
     }
 
     // Check environment variables
@@ -1886,7 +1891,7 @@ async function enumerateLambdaFunctions(region: string): Promise<string> {
       const sensitiveKeys = ["PASSWORD", "SECRET", "KEY", "TOKEN", "API_KEY"];
       const hasSensitiveKeys = envVars.some(key => sensitiveKeys.some(s => key.toUpperCase().includes(s)));
       if (hasSensitiveKeys) {
-        findings.push(`🟠 HIGH: Lambda ${func.FunctionName} may have secrets in environment variables - use Secrets Manager instead`);
+        findings.push(`[HIGH] HIGH: Lambda ${func.FunctionName} may have secrets in environment variables - use Secrets Manager instead`);
       }
     }
 
@@ -1935,14 +1940,14 @@ async function analyzeSecurityGroups(region: string): Promise<string> {
       
       if (hasPublicAccess) {
         if (rule.IpProtocol === "-1") {
-          findings.push(`🔴 CRITICAL: ${sg.GroupName} (${sg.GroupId}) allows ALL traffic from Internet (0.0.0.0/0)`);
+          findings.push(`[CRITICAL] CRITICAL: ${sg.GroupName} (${sg.GroupId}) allows ALL traffic from Internet (0.0.0.0/0)`);
           hasFindings = true;
         } else if (fromPort && dangerousPorts.includes(fromPort)) {
           const portName = portNames[fromPort] || fromPort.toString();
-          findings.push(`🔴 CRITICAL: ${sg.GroupName} (${sg.GroupId}) exposes ${portName} (port ${fromPort}) to Internet`);
+          findings.push(`[CRITICAL] CRITICAL: ${sg.GroupName} (${sg.GroupId}) exposes ${portName} (port ${fromPort}) to Internet`);
           hasFindings = true;
         } else if (fromPort === 0 && toPort === 65535) {
-          findings.push(`🔴 CRITICAL: ${sg.GroupName} (${sg.GroupId}) allows all ports from Internet`);
+          findings.push(`[CRITICAL] CRITICAL: ${sg.GroupName} (${sg.GroupId}) allows all ports from Internet`);
           hasFindings = true;
         }
       }
@@ -1955,7 +1960,7 @@ async function analyzeSecurityGroups(region: string): Promise<string> {
 
   output += `\n## Security Findings (${findings.length})\n`;
   if (findings.length === 0) {
-    output += `✅ No critical security group misconfigurations found\n`;
+    output += `[OK] No critical security group misconfigurations found\n`;
   } else {
     findings.forEach(f => output += `${f}\n`);
   }
@@ -1971,7 +1976,7 @@ async function checkIAMPolicies(policyArn?: string): Promise<string> {
     // Analyze specific policy
     output += `Analyzing policy: ${policyArn}\n\n`;
     // Policy analysis would go here
-    return output + "✅ Policy analysis complete";
+    return output + "[OK] Policy analysis complete";
   }
 
   // List all customer managed policies
@@ -2004,10 +2009,10 @@ async function checkIAMPolicies(policyArn?: string): Promise<string> {
         // Check for wildcards
         const docString = JSON.stringify(policyDoc);
         if (docString.includes('"Action":"*"') || docString.includes('"Resource":"*"')) {
-          findings.push(`🔴 CRITICAL: Policy ${policy.PolicyName} contains wildcard permissions - potential privilege escalation`);
+          findings.push(`[CRITICAL] CRITICAL: Policy ${policy.PolicyName} contains wildcard permissions - potential privilege escalation`);
         }
         if (docString.includes(':iam:') && (docString.includes('AttachUserPolicy') || docString.includes('CreateAccessKey'))) {
-          findings.push(`🟠 HIGH: Policy ${policy.PolicyName} can modify IAM - privilege escalation risk`);
+          findings.push(`[HIGH] HIGH: Policy ${policy.PolicyName} can modify IAM - privilege escalation risk`);
         }
       } catch (error) {
         // Skip if can't read policy
@@ -2019,7 +2024,7 @@ async function checkIAMPolicies(policyArn?: string): Promise<string> {
 
   output += `## Security Findings (${findings.length})\n`;
   if (findings.length === 0) {
-    output += `✅ No overly permissive policies detected\n`;
+    output += `[OK] No overly permissive policies detected\n`;
   } else {
     findings.forEach(f => output += `${f}\n`);
   }
@@ -2053,18 +2058,18 @@ async function enumerateEKSClusters(region: string): Promise<string> {
     
     // Check public endpoint
     const isPublic = cluster.resourcesVpcConfig?.endpointPublicAccess;
-    output += `- **Public Endpoint:** ${isPublic ? "⚠️ Enabled" : "✅ Disabled"}\n`;
+    output += `- **Public Endpoint:** ${isPublic ? "[WARN] Enabled" : "[OK] Disabled"}\n`;
     
     // Check network configuration
     const publicCidrs = cluster.resourcesVpcConfig?.publicAccessCidrs || [];
     if (isPublic && publicCidrs.includes("0.0.0.0/0")) {
-      findings.push(`🔴 CRITICAL: EKS cluster ${cluster.name} API server accessible from Internet (0.0.0.0/0)`);
+      findings.push(`[CRITICAL] CRITICAL: EKS cluster ${cluster.name} API server accessible from Internet (0.0.0.0/0)`);
     }
 
-    output += `- **Logging Enabled:** ${cluster.logging?.clusterLogging?.some(l => l.enabled) ? "✅ Yes" : "❌ No"}\n`;
+    output += `- **Logging Enabled:** ${cluster.logging?.clusterLogging?.some(l => l.enabled) ? "[OK] Yes" : "[FAIL] No"}\n`;
     
     if (!cluster.logging?.clusterLogging?.some(l => l.enabled)) {
-      findings.push(`🟡 MEDIUM: EKS cluster ${cluster.name} has no control plane logging enabled`);
+      findings.push(`[MEDIUM] MEDIUM: EKS cluster ${cluster.name} has no control plane logging enabled`);
     }
 
     output += `\n`;
@@ -2072,7 +2077,7 @@ async function enumerateEKSClusters(region: string): Promise<string> {
 
   output += `## Security Findings (${findings.length})\n`;
   if (findings.length === 0) {
-    output += `✅ No critical EKS security issues found\n`;
+    output += `[OK] No critical EKS security issues found\n`;
   } else {
     findings.forEach(f => output += `${f}\n`);
   }
@@ -2102,7 +2107,7 @@ async function checkKMSKeys(region: string): Promise<string> {
       output += `## ${keyMetadata.Description || keyMetadata.KeyId}\n`;
       output += `- **Key ID:** ${keyMetadata.KeyId}\n`;
       output += `- **State:** ${keyMetadata.KeyState}\n`;
-      output += `- **Enabled:** ${keyMetadata.Enabled ? "✅ Yes" : "❌ No"}\n`;
+      output += `- **Enabled:** ${keyMetadata.Enabled ? "[OK] Yes" : "[FAIL] No"}\n`;
       output += `- **Created:** ${keyMetadata.CreationDate?.toISOString()}\n`;
 
       // Note: Key rotation status requires separate GetKeyRotationStatus API call
@@ -2116,7 +2121,7 @@ async function checkKMSKeys(region: string): Promise<string> {
 
   output += `## Security Findings (${findings.length})\n`;
   if (findings.length === 0) {
-    output += `✅ No KMS key security issues found\n`;
+    output += `[OK] No KMS key security issues found\n`;
   } else {
     findings.forEach(f => output += `${f}\n`);
   }
@@ -2140,18 +2145,18 @@ async function scanSecretsManager(region: string): Promise<string> {
     output += `## ${secret.Name}\n`;
     output += `- **ARN:** ${secret.ARN}\n`;
     output += `- **Description:** ${secret.Description || "N/A"}\n`;
-    output += `- **Rotation Enabled:** ${secret.RotationEnabled ? "✅ Yes" : "⚠️ No"}\n`;
+    output += `- **Rotation Enabled:** ${secret.RotationEnabled ? "[OK] Yes" : "[WARN] No"}\n`;
     output += `- **Last Changed:** ${secret.LastChangedDate?.toISOString() || "N/A"}\n`;
     output += `- **Last Accessed:** ${secret.LastAccessedDate?.toISOString() || "Never"}\n`;
 
     if (!secret.RotationEnabled) {
-      findings.push(`🟡 MEDIUM: Secret ${secret.Name} does not have automatic rotation enabled`);
+      findings.push(`[MEDIUM] MEDIUM: Secret ${secret.Name} does not have automatic rotation enabled`);
     }
 
     const daysSinceChange = secret.LastChangedDate ? 
       Math.floor((Date.now() - secret.LastChangedDate.getTime()) / (1000 * 60 * 60 * 24)) : 999;
     if (daysSinceChange > 90) {
-      findings.push(`🟠 HIGH: Secret ${secret.Name} hasn't been rotated in ${daysSinceChange} days`);
+      findings.push(`[HIGH] HIGH: Secret ${secret.Name} hasn't been rotated in ${daysSinceChange} days`);
     }
 
     output += `\n`;
@@ -2159,7 +2164,7 @@ async function scanSecretsManager(region: string): Promise<string> {
 
   output += `## Security Findings (${findings.length})\n`;
   if (findings.length === 0) {
-    output += `✅ All secrets properly configured\n`;
+    output += `[OK] All secrets properly configured\n`;
   } else {
     findings.forEach(f => output += `${f}\n`);
   }
@@ -2181,7 +2186,7 @@ async function enumeratePublicResources(region: string): Promise<string> {
     for (const instance of reservation.Instances || []) {
       if (instance.PublicIpAddress) {
         publicEC2Count++;
-        publicResources.push(`🔴 EC2 Instance ${instance.InstanceId} - Public IP: ${instance.PublicIpAddress}`);
+        publicResources.push(`[CRITICAL] EC2 Instance ${instance.InstanceId} - Public IP: ${instance.PublicIpAddress}`);
       }
     }
   }
@@ -2197,7 +2202,7 @@ async function enumeratePublicResources(region: string): Promise<string> {
   for (const db of rdsResponse.DBInstances || []) {
     if (db.PubliclyAccessible) {
       publicRDSCount++;
-      publicResources.push(`🔴 RDS Instance ${db.DBInstanceIdentifier} - Publicly Accessible`);
+      publicResources.push(`[CRITICAL] RDS Instance ${db.DBInstanceIdentifier} - Publicly Accessible`);
     }
   }
 
@@ -2212,7 +2217,7 @@ async function enumeratePublicResources(region: string): Promise<string> {
     output += `## Attack Surface Details\n`;
     publicResources.forEach(r => output += `${r}\n`);
   } else {
-    output += `✅ No publicly accessible resources found\n`;
+    output += `[OK] No publicly accessible resources found\n`;
   }
 
   return output;
@@ -2235,7 +2240,7 @@ async function analyzeAttackPaths(region: string): Promise<string> {
       const iamRole = instance.IamInstanceProfile?.Arn?.split("/").pop();
       
       if (hasPublicIP && iamRole) {
-        attackPaths.push(`⚠️ Public EC2 ${instance.InstanceId} has IAM role ${iamRole} - potential pivot point`);
+        attackPaths.push(`[WARN] Public EC2 ${instance.InstanceId} has IAM role ${iamRole} - potential pivot point`);
       }
     }
   }
@@ -2252,7 +2257,7 @@ async function analyzeAttackPaths(region: string): Promise<string> {
     if (roleName) {
       // Check if role name suggests high privileges
       if (roleName.toLowerCase().includes("admin") || roleName.toLowerCase().includes("full")) {
-        attackPaths.push(`⚠️ Lambda ${func.FunctionName} has privileged role ${roleName} - code execution risk`);
+        attackPaths.push(`[WARN] Lambda ${func.FunctionName} has privileged role ${roleName} - code execution risk`);
       }
     }
   }
@@ -2262,7 +2267,7 @@ async function analyzeAttackPaths(region: string): Promise<string> {
   if (attackPaths.length > 0) {
     attackPaths.forEach(p => output += `${p}\n`);
   } else {
-    output += `✅ No obvious attack paths detected\n`;
+    output += `[OK] No obvious attack paths detected\n`;
   }
 
   output += `\n💡 Manual review recommended: Check IAM role permissions, Lambda environment variables, EC2 security groups\n`;
@@ -2284,21 +2289,21 @@ async function generateSecurityReport(region: string, format: string = "markdown
 
     // Security Group findings
     const sgResult = await analyzeSecurityGroups(region);
-    const sgCritical = (sgResult.match(/🔴 CRITICAL/g) || []).length;
+    const sgCritical = (sgResult.match(/[CRITICAL] CRITICAL/g) || []).length;
     criticalCount += sgCritical;
     findings.push({ category: "Security Groups", data: sgResult });
 
     // RDS findings
     const rdsResult = await enumerateRDSDatabases(region);
-    const rdsCritical = (rdsResult.match(/🔴 CRITICAL/g) || []).length;
-    const rdsHigh = (rdsResult.match(/🟠 HIGH/g) || []).length;
+    const rdsCritical = (rdsResult.match(/[CRITICAL] CRITICAL/g) || []).length;
+    const rdsHigh = (rdsResult.match(/[HIGH] HIGH/g) || []).length;
     criticalCount += rdsCritical;
     highCount += rdsHigh;
     findings.push({ category: "RDS Databases", data: rdsResult });
 
     // Public resources
     const publicResult = await enumeratePublicResources(region);
-    const publicCritical = (publicResult.match(/🔴/g) || []).length;
+    const publicCritical = (publicResult.match(/[CRITICAL]/g) || []).length;
     criticalCount += publicCritical;
     findings.push({ category: "Public Resources", data: publicResult });
 
@@ -2310,22 +2315,22 @@ async function generateSecurityReport(region: string, format: string = "markdown
   let report = `# AWS Security Assessment Report\n\n`;
   report += `**Region:** ${region}\n`;
   report += `**Scan Date:** ${new Date().toISOString()}\n`;
-  report += `**Generated By:** AWS Pentest MCP v1.0.0\n\n`;
+  report += `**Generated By:** Nimbus v1.4.2\n\n`;
 
   report += `## Executive Summary\n\n`;
   report += `**Total Findings:** ${criticalCount + highCount + mediumCount + lowCount}\n`;
-  report += `- 🔴 **CRITICAL:** ${criticalCount}\n`;
-  report += `- 🟠 **HIGH:** ${highCount}\n`;
-  report += `- 🟡 **MEDIUM:** ${mediumCount}\n`;
-  report += `- 🟢 **LOW:** ${lowCount}\n\n`;
+  report += `- [CRITICAL] **CRITICAL:** ${criticalCount}\n`;
+  report += `- [HIGH] **HIGH:** ${highCount}\n`;
+  report += `- [MEDIUM] **MEDIUM:** ${mediumCount}\n`;
+  report += `- [LOW] **LOW:** ${lowCount}\n\n`;
 
   report += `## Risk Assessment\n`;
   if (criticalCount > 0) {
-    report += `**Overall Risk Level:** 🔴 CRITICAL\n\n`;
+    report += `**Overall Risk Level:** [CRITICAL] CRITICAL\n\n`;
   } else if (highCount > 0) {
-    report += `**Overall Risk Level:** 🟠 HIGH\n\n`;
+    report += `**Overall Risk Level:** [HIGH] HIGH\n\n`;
   } else {
-    report += `**Overall Risk Level:** 🟢 LOW\n\n`;
+    report += `**Overall Risk Level:** [LOW] LOW\n\n`;
   }
 
   report += `## Detailed Findings\n\n`;
@@ -2345,13 +2350,13 @@ async function generateSecurityReport(region: string, format: string = "markdown
       lowCount, 
       findings 
     });
-    return `✅ PDF report generated: ${outputFile}\n\n📄 Total findings: ${criticalCount + highCount + mediumCount + lowCount}\n🔴 Critical: ${criticalCount}\n🟠 High: ${highCount}`;
+    return `[OK] PDF report generated: ${outputFile}\n\n📄 Total findings: ${criticalCount + highCount + mediumCount + lowCount}\n[CRITICAL] Critical: ${criticalCount}\n[HIGH] High: ${highCount}`;
   } else if (format === "html" && outputFile) {
     await generateHTMLReport(report, outputFile);
-    return `✅ HTML report generated: ${outputFile}\n\n${report}`;
+    return `[OK] HTML report generated: ${outputFile}\n\n${report}`;
   } else if (format === "csv" && outputFile) {
     await generateCSVReport(findings, outputFile);
-    return `✅ CSV report generated: ${outputFile}\n\n${report}`;
+    return `[OK] CSV report generated: ${outputFile}\n\n${report}`;
   }
 
   return report;
@@ -2375,7 +2380,7 @@ async function generatePDFReport(
   doc.fontSize(10).fillColor('#666')
     .text(`Region: ${metadata?.region || 'N/A'}`, { continued: true })
     .text(`  |  Scan Date: ${scanDate}`, { continued: true })
-    .text(`  |  Generated By: AWS Pentest MCP v1.0.0`);
+    .text(`  |  Generated By: Nimbus v1.4.2`);
   doc.moveDown(2);
 
   // Executive Summary Box
@@ -2384,10 +2389,10 @@ async function generatePDFReport(
   
   const total = (metadata?.criticalCount || 0) + (metadata?.highCount || 0) + (metadata?.mediumCount || 0) + (metadata?.lowCount || 0);
   doc.fontSize(12).fillColor('#000').text(`Total Findings: ${total}`);
-  doc.fillColor('#D13212').text(`🔴 CRITICAL: ${metadata?.criticalCount || 0}`);
-  doc.fillColor('#FF9900').text(`🟠 HIGH: ${metadata?.highCount || 0}`);
-  doc.fillColor('#FFA500').text(`🟡 MEDIUM: ${metadata?.mediumCount || 0}`);
-  doc.fillColor('#1D8102').text(`🟢 LOW: ${metadata?.lowCount || 0}`);
+  doc.fillColor('#D13212').text(`[CRITICAL] CRITICAL: ${metadata?.criticalCount || 0}`);
+  doc.fillColor('#FF9900').text(`[HIGH] HIGH: ${metadata?.highCount || 0}`);
+  doc.fillColor('#FFA500').text(`[MEDIUM] MEDIUM: ${metadata?.mediumCount || 0}`);
+  doc.fillColor('#1D8102').text(`[LOW] LOW: ${metadata?.lowCount || 0}`);
   doc.moveDown(2);
 
   // Risk Assessment
@@ -2412,19 +2417,19 @@ async function generatePDFReport(
 
   if (metadata?.findings) {
     for (const finding of metadata.findings) {
-      doc.fontSize(14).fillColor('#FF9900').text(`📋 ${finding.category}`);
+      doc.fontSize(14).fillColor('#FF9900').text(` ${finding.category}`);
       doc.moveDown(0.5);
       
       // Parse findings from data
       const lines = finding.data.split('\n').slice(0, 20); // Limit lines per category
       for (const line of lines) {
-        if (line.includes('🔴 CRITICAL')) {
+        if (line.includes('[CRITICAL] CRITICAL')) {
           doc.fontSize(10).fillColor('#D13212').text(line.replace(/[#*]/g, '').trim());
-        } else if (line.includes('🟠 HIGH')) {
+        } else if (line.includes('[HIGH] HIGH')) {
           doc.fontSize(10).fillColor('#FF9900').text(line.replace(/[#*]/g, '').trim());
-        } else if (line.includes('🟡 MEDIUM')) {
+        } else if (line.includes('[MEDIUM] MEDIUM')) {
           doc.fontSize(10).fillColor('#FFA500').text(line.replace(/[#*]/g, '').trim());
-        } else if (line.includes('🟢') || line.includes('✅')) {
+        } else if (line.includes('[LOW]') || line.includes('[OK]')) {
           doc.fontSize(10).fillColor('#1D8102').text(line.replace(/[#*]/g, '').trim());
         } else if (line.trim() && !line.startsWith('#')) {
           doc.fontSize(10).fillColor('#000').text(line.replace(/[#*]/g, '').trim());
@@ -2438,7 +2443,7 @@ async function generatePDFReport(
     for (const section of sections) {
       const lines = section.split('\n');
       const title = lines[0]?.trim() || 'Finding';
-      doc.fontSize(14).fillColor('#FF9900').text(`📋 ${title}`);
+      doc.fontSize(14).fillColor('#FF9900').text(` ${title}`);
       doc.moveDown(0.5);
       
       for (const line of lines.slice(1, 15)) {
@@ -2457,8 +2462,8 @@ async function generatePDFReport(
   // Footer
   doc.moveDown(2);
   doc.fontSize(8).fillColor('#666')
-    .text('Generated by AWS Penetration Testing MCP Server v1.0.0', { align: 'center' })
-    .text('https://github.com/aws-pentest-mcp', { align: 'center' });
+    .text('Generated by Nimbus - AWS Security Assessment MCP v1.4.2', { align: 'center' })
+    .text('https://github.com/jaikumar3/nimbus-mcp', { align: 'center' });
 
   doc.end();
 
@@ -2519,7 +2524,7 @@ async function scanDynamoDBSecurity(region: string, tableName?: string): Promise
     const tables = await client.send(listCmd);
     
     if (!tables.TableNames || tables.TableNames.length === 0) {
-      return output + "✅ No DynamoDB tables found in region.\n";
+      return output + "[OK] No DynamoDB tables found in region.\n";
     }
     
     const tablesToScan = tableName ? [tableName] : tables.TableNames;
@@ -2535,10 +2540,10 @@ async function scanDynamoDBSecurity(region: string, tableName?: string): Promise
         
         // Check encryption
         if (!tableDesc.Table?.SSEDescription || tableDesc.Table.SSEDescription.Status !== "ENABLED") {
-          findings.push("🔴 CRITICAL: Encryption at rest NOT enabled");
+          findings.push("[CRITICAL] CRITICAL: Encryption at rest NOT enabled");
           criticalCount++;
         } else {
-          findings.push(`🟢 Encryption: ${tableDesc.Table.SSEDescription.SSEType} (${tableDesc.Table.SSEDescription.Status})`);
+          findings.push(`[LOW] Encryption: ${tableDesc.Table.SSEDescription.SSEType} (${tableDesc.Table.SSEDescription.Status})`);
         }
         
         // Check point-in-time recovery
@@ -2546,15 +2551,15 @@ async function scanDynamoDBSecurity(region: string, tableName?: string): Promise
         const backup = await client.send(backupCmd);
         
         if (backup.ContinuousBackupsDescription?.PointInTimeRecoveryDescription?.PointInTimeRecoveryStatus !== "ENABLED") {
-          findings.push("🟠 HIGH: Point-in-time recovery NOT enabled (data loss risk)");
+          findings.push("[HIGH] HIGH: Point-in-time recovery NOT enabled (data loss risk)");
           highCount++;
         } else {
-          findings.push("🟢 Point-in-time recovery: ENABLED");
+          findings.push("[LOW] Point-in-time recovery: ENABLED");
         }
         
         // Check billing mode
         const billingMode = tableDesc.Table?.BillingModeSummary?.BillingMode || "PROVISIONED";
-        findings.push(`🟡 Billing Mode: ${billingMode}`);
+        findings.push(`[MEDIUM] Billing Mode: ${billingMode}`);
         
         // Check table status
         findings.push(`Status: ${tableDesc.Table?.TableStatus}`);
@@ -2563,17 +2568,17 @@ async function scanDynamoDBSecurity(region: string, tableName?: string): Promise
         output += findings.join("\n") + "\n";
         
       } catch (error: any) {
-        output += `⚠️ Error analyzing table: ${error.message}\n`;
+        output += `[WARN] Error analyzing table: ${error.message}\n`;
       }
     }
     
     output += `\n### Severity Summary\n`;
-    output += `- 🔴 CRITICAL: ${criticalCount}\n`;
-    output += `- 🟠 HIGH: ${highCount}\n`;
-    output += `- 🟡 MEDIUM: ${mediumCount}\n`;
+    output += `- [CRITICAL] CRITICAL: ${criticalCount}\n`;
+    output += `- [HIGH] HIGH: ${highCount}\n`;
+    output += `- [MEDIUM] MEDIUM: ${mediumCount}\n`;
     
   } catch (error: any) {
-    output += `\n❌ Error: ${error.message}\n`;
+    output += `\n[FAIL] Error: ${error.message}\n`;
   }
   
   return output;
@@ -2588,7 +2593,7 @@ async function scanAPIGatewaySecurity(region: string): Promise<string> {
     const apis = await client.send(listCmd);
     
     if (!apis.items || apis.items.length === 0) {
-      return output + "✅ No REST APIs found in region.\n";
+      return output + "[OK] No REST APIs found in region.\n";
     }
     
     let criticalCount = 0, highCount = 0, mediumCount = 0;
@@ -2603,36 +2608,36 @@ async function scanAPIGatewaySecurity(region: string): Promise<string> {
         const stages = await client.send(stagesCmd);
         
         if (!stages.item || stages.item.length === 0) {
-          findings.push("🟡 INFO: No stages deployed");
+          findings.push("[MEDIUM] INFO: No stages deployed");
         } else {
           for (const stage of stages.item) {
             findings.push(`\n### Stage: ${stage.stageName}`);
             
             // Check logging
             if (!stage.accessLogSettings || !stage.accessLogSettings.destinationArn) {
-              findings.push("🟠 HIGH: Access logging NOT enabled (no audit trail)");
+              findings.push("[HIGH] HIGH: Access logging NOT enabled (no audit trail)");
               highCount++;
             } else {
-              findings.push("🟢 Access logging: ENABLED");
+              findings.push("[LOW] Access logging: ENABLED");
             }
             
             // Check throttling
             if (!stage.methodSettings || Object.keys(stage.methodSettings).length === 0) {
-              findings.push("🟠 HIGH: Throttling NOT configured (DDoS risk)");
+              findings.push("[HIGH] HIGH: Throttling NOT configured (DDoS risk)");
               highCount++;
             } else {
-              findings.push("🟢 Throttling: Configured in method settings");
+              findings.push("[LOW] Throttling: Configured in method settings");
             }
             
             // Check API key requirement
             if (!stage.methodSettings || Object.keys(stage.methodSettings).length === 0) {
-              findings.push("🟡 MEDIUM: No method-level security configured");
+              findings.push("[MEDIUM] MEDIUM: No method-level security configured");
               mediumCount++;
             }
             
             // Check client certificate
             if (!stage.clientCertificateId) {
-              findings.push("🟡 MEDIUM: Client certificate NOT configured");
+              findings.push("[MEDIUM] MEDIUM: Client certificate NOT configured");
               mediumCount++;
             }
           }
@@ -2641,17 +2646,17 @@ async function scanAPIGatewaySecurity(region: string): Promise<string> {
         output += findings.join("\n") + "\n";
         
       } catch (error: any) {
-        output += `⚠️ Error analyzing API: ${error.message}\n`;
+        output += `[WARN] Error analyzing API: ${error.message}\n`;
       }
     }
     
     output += `\n### Severity Summary\n`;
-    output += `- 🔴 CRITICAL: ${criticalCount}\n`;
-    output += `- 🟠 HIGH: ${highCount}\n`;
-    output += `- 🟡 MEDIUM: ${mediumCount}\n`;
+    output += `- [CRITICAL] CRITICAL: ${criticalCount}\n`;
+    output += `- [HIGH] HIGH: ${highCount}\n`;
+    output += `- [MEDIUM] MEDIUM: ${mediumCount}\n`;
     
   } catch (error: any) {
-    output += `\n❌ Error: ${error.message}\n`;
+    output += `\n[FAIL] Error: ${error.message}\n`;
   }
   
   return output;
@@ -2666,7 +2671,7 @@ async function scanCloudFrontSecurity(): Promise<string> {
     const distributions = await client.send(listCmd);
     
     if (!distributions.DistributionList || !distributions.DistributionList.Items || distributions.DistributionList.Items.length === 0) {
-      return output + "✅ No CloudFront distributions found.\n";
+      return output + "[OK] No CloudFront distributions found.\n";
     }
     
     let criticalCount = 0, highCount = 0, mediumCount = 0;
@@ -2682,7 +2687,7 @@ async function scanCloudFrontSecurity(): Promise<string> {
         const distConfig = config.DistributionConfig;
         
         if (!distConfig) {
-          findings.push("⚠️ Could not retrieve configuration");
+          findings.push("[WARN] Could not retrieve configuration");
           output += findings.join("\n") + "\n";
           continue;
         }
@@ -2692,26 +2697,26 @@ async function scanCloudFrontSecurity(): Promise<string> {
             (distConfig.ViewerCertificate.MinimumProtocolVersion.includes("SSLv3") || 
              distConfig.ViewerCertificate.MinimumProtocolVersion.includes("TLSv1.0") ||
              distConfig.ViewerCertificate.MinimumProtocolVersion.includes("TLSv1.1"))) {
-          findings.push(`🔴 CRITICAL: Weak TLS version ${distConfig.ViewerCertificate.MinimumProtocolVersion} (use TLSv1.2+)`);
+          findings.push(`[CRITICAL] CRITICAL: Weak TLS version ${distConfig.ViewerCertificate.MinimumProtocolVersion} (use TLSv1.2+)`);
           criticalCount++;
         } else {
-          findings.push(`🟢 TLS Version: ${distConfig.ViewerCertificate?.MinimumProtocolVersion || "TLSv1.2"}`);
+          findings.push(`[LOW] TLS Version: ${distConfig.ViewerCertificate?.MinimumProtocolVersion || "TLSv1.2"}`);
         }
         
         // Check HTTPS enforcement
         if (distConfig.DefaultCacheBehavior?.ViewerProtocolPolicy !== "https-only" && 
             distConfig.DefaultCacheBehavior?.ViewerProtocolPolicy !== "redirect-to-https") {
-          findings.push("🔴 CRITICAL: HTTPS NOT enforced (allows HTTP traffic)");
+          findings.push("[CRITICAL] CRITICAL: HTTPS NOT enforced (allows HTTP traffic)");
           criticalCount++;
         } else {
-          findings.push(`🟢 HTTPS Policy: ${distConfig.DefaultCacheBehavior?.ViewerProtocolPolicy}`);
+          findings.push(`[LOW] HTTPS Policy: ${distConfig.DefaultCacheBehavior?.ViewerProtocolPolicy}`);
         }
         
         // Check origin access
         if (distConfig.Origins?.Items) {
           for (const origin of distConfig.Origins.Items) {
             if (origin.S3OriginConfig && !origin.S3OriginConfig.OriginAccessIdentity) {
-              findings.push(`🟠 HIGH: S3 origin ${origin.Id} has NO Origin Access Identity (bucket may be public)`);
+              findings.push(`[HIGH] HIGH: S3 origin ${origin.Id} has NO Origin Access Identity (bucket may be public)`);
               highCount++;
             }
           }
@@ -2719,41 +2724,41 @@ async function scanCloudFrontSecurity(): Promise<string> {
         
         // Check WAF
         if (!distConfig.WebACLId || distConfig.WebACLId === "") {
-          findings.push("🟡 MEDIUM: WAF NOT enabled (no application firewall)");
+          findings.push("[MEDIUM] MEDIUM: WAF NOT enabled (no application firewall)");
           mediumCount++;
         } else {
-          findings.push(`🟢 WAF: ${distConfig.WebACLId}`);
+          findings.push(`[LOW] WAF: ${distConfig.WebACLId}`);
         }
         
         // Check geo restrictions
         if (!distConfig.Restrictions?.GeoRestriction || distConfig.Restrictions.GeoRestriction.RestrictionType === "none") {
-          findings.push("🟡 INFO: No geo-restrictions configured");
+          findings.push("[MEDIUM] INFO: No geo-restrictions configured");
         } else {
-          findings.push(`🟡 Geo-Restrictions: ${distConfig.Restrictions.GeoRestriction.RestrictionType} (${distConfig.Restrictions.GeoRestriction.Quantity} countries)`);
+          findings.push(`[MEDIUM] Geo-Restrictions: ${distConfig.Restrictions.GeoRestriction.RestrictionType} (${distConfig.Restrictions.GeoRestriction.Quantity} countries)`);
         }
         
         // Check logging
         if (!distConfig.Logging || !distConfig.Logging.Enabled) {
-          findings.push("🟡 MEDIUM: Access logging NOT enabled");
+          findings.push("[MEDIUM] MEDIUM: Access logging NOT enabled");
           mediumCount++;
         } else {
-          findings.push(`🟢 Logging: ${distConfig.Logging.Bucket}`);
+          findings.push(`[LOW] Logging: ${distConfig.Logging.Bucket}`);
         }
         
         output += findings.join("\n") + "\n";
         
       } catch (error: any) {
-        output += `⚠️ Error analyzing distribution: ${error.message}\n`;
+        output += `[WARN] Error analyzing distribution: ${error.message}\n`;
       }
     }
     
     output += `\n### Severity Summary\n`;
-    output += `- 🔴 CRITICAL: ${criticalCount}\n`;
-    output += `- 🟠 HIGH: ${highCount}\n`;
-    output += `- 🟡 MEDIUM: ${mediumCount}\n`;
+    output += `- [CRITICAL] CRITICAL: ${criticalCount}\n`;
+    output += `- [HIGH] HIGH: ${highCount}\n`;
+    output += `- [MEDIUM] MEDIUM: ${mediumCount}\n`;
     
   } catch (error: any) {
-    output += `\n❌ Error: ${error.message}\n`;
+    output += `\n[FAIL] Error: ${error.message}\n`;
   }
   
   return output;
@@ -2779,26 +2784,26 @@ async function scanElastiCacheSecurity(region: string): Promise<string> {
         
         // Check encryption at rest
         if (!cluster.AtRestEncryptionEnabled) {
-          findings.push("🔴 CRITICAL: Encryption at rest NOT enabled");
+          findings.push("[CRITICAL] CRITICAL: Encryption at rest NOT enabled");
           criticalCount++;
         } else {
-          findings.push("🟢 Encryption at rest: ENABLED");
+          findings.push("[LOW] Encryption at rest: ENABLED");
         }
         
         // Check encryption in transit
         if (!cluster.TransitEncryptionEnabled) {
-          findings.push("🔴 CRITICAL: Encryption in transit NOT enabled (data exposed on network)");
+          findings.push("[CRITICAL] CRITICAL: Encryption in transit NOT enabled (data exposed on network)");
           criticalCount++;
         } else {
-          findings.push("🟢 Encryption in transit: ENABLED");
+          findings.push("[LOW] Encryption in transit: ENABLED");
         }
         
         // Check auth token (Redis only)
         if (cluster.Engine === "redis" && !cluster.AuthTokenEnabled) {
-          findings.push("🟠 HIGH: Auth token NOT enabled (no password authentication)");
+          findings.push("[HIGH] HIGH: Auth token NOT enabled (no password authentication)");
           highCount++;
         } else if (cluster.Engine === "redis") {
-          findings.push("🟢 Auth token: ENABLED");
+          findings.push("[LOW] Auth token: ENABLED");
         }
         
         // Check public access
@@ -2826,17 +2831,17 @@ async function scanElastiCacheSecurity(region: string): Promise<string> {
         const findings: string[] = [];
         
         if (!group.AtRestEncryptionEnabled) {
-          findings.push("🔴 CRITICAL: Encryption at rest NOT enabled");
+          findings.push("[CRITICAL] CRITICAL: Encryption at rest NOT enabled");
           criticalCount++;
         }
         
         if (!group.TransitEncryptionEnabled) {
-          findings.push("🔴 CRITICAL: Encryption in transit NOT enabled");
+          findings.push("[CRITICAL] CRITICAL: Encryption in transit NOT enabled");
           criticalCount++;
         }
         
         if (!group.AuthTokenEnabled) {
-          findings.push("🟠 HIGH: Auth token NOT enabled");
+          findings.push("[HIGH] HIGH: Auth token NOT enabled");
           highCount++;
         }
         
@@ -2850,16 +2855,16 @@ async function scanElastiCacheSecurity(region: string): Promise<string> {
     
     if ((!clusters.CacheClusters || clusters.CacheClusters.length === 0) && 
         (!replGroups.ReplicationGroups || replGroups.ReplicationGroups.length === 0)) {
-      return output + "✅ No ElastiCache resources found in region.\n";
+      return output + "[OK] No ElastiCache resources found in region.\n";
     }
     
     output += `\n### Severity Summary\n`;
-    output += `- 🔴 CRITICAL: ${criticalCount}\n`;
-    output += `- 🟠 HIGH: ${highCount}\n`;
-    output += `- 🟡 MEDIUM: ${mediumCount}\n`;
+    output += `- [CRITICAL] CRITICAL: ${criticalCount}\n`;
+    output += `- [HIGH] HIGH: ${highCount}\n`;
+    output += `- [MEDIUM] MEDIUM: ${mediumCount}\n`;
     
   } catch (error: any) {
-    output += `\n❌ Error: ${error.message}\n`;
+    output += `\n[FAIL] Error: ${error.message}\n`;
   }
   
   return output;
@@ -2875,7 +2880,7 @@ async function getGuardDutyFindings(region: string, severityFilter?: string): Pr
     const detectors = await client.send(detectorsCmd);
     
     if (!detectors.DetectorIds || detectors.DetectorIds.length === 0) {
-      return output + "⚠️ No GuardDuty detectors enabled in this region.\n" +
+      return output + "[WARN] No GuardDuty detectors enabled in this region.\n" +
              "GuardDuty must be enabled to detect threats. Enable it in AWS Console > GuardDuty.\n";
     }
     
@@ -2887,7 +2892,7 @@ async function getGuardDutyFindings(region: string, severityFilter?: string): Pr
       const findingsList = await client.send(findingsCmd);
       
       if (!findingsList.FindingIds || findingsList.FindingIds.length === 0) {
-        output += "✅ No active findings (no threats detected).\n";
+        output += "[OK] No active findings (no threats detected).\n";
         continue;
       }
       
@@ -2918,7 +2923,7 @@ async function getGuardDutyFindings(region: string, severityFilter?: string): Pr
           continue;
         }
         
-        const emoji = severity >= 7 ? "🔴" : severity >= 4 ? "🟠" : severity >= 1 ? "🟡" : "🟢";
+        const emoji = severity >= 7 ? "[CRITICAL]" : severity >= 4 ? "[HIGH]" : severity >= 1 ? "[MEDIUM]" : "[LOW]";
         
         output += `\n### ${emoji} ${severityLabel}: ${finding.Title}\n`;
         output += `- Type: ${finding.Type}\n`;
@@ -2938,19 +2943,19 @@ async function getGuardDutyFindings(region: string, severityFilter?: string): Pr
       }
       
       output += `\n### Findings Summary\n`;
-      output += `- 🔴 CRITICAL (7-10): ${criticalCount}\n`;
-      output += `- 🟠 HIGH (4-6): ${highCount}\n`;
-      output += `- 🟡 MEDIUM (1-3): ${mediumCount}\n`;
-      output += `- 🟢 LOW (0): ${lowCount}\n`;
+      output += `- [CRITICAL] CRITICAL (7-10): ${criticalCount}\n`;
+      output += `- [HIGH] HIGH (4-6): ${highCount}\n`;
+      output += `- [MEDIUM] MEDIUM (1-3): ${mediumCount}\n`;
+      output += `- [LOW] LOW (0): ${lowCount}\n`;
       output += `- Total: ${criticalCount + highCount + mediumCount + lowCount}\n`;
       
       if (findingsList.FindingIds.length > 50) {
-        output += `\n⚠️ Showing 50 of ${findingsList.FindingIds.length} findings. Use AWS Console for full list.\n`;
+        output += `\n[WARN] Showing 50 of ${findingsList.FindingIds.length} findings. Use AWS Console for full list.\n`;
       }
     }
     
   } catch (error: any) {
-    output += `\n❌ Error: ${error.message}\n`;
+    output += `\n[FAIL] Error: ${error.message}\n`;
     if (error.message.includes("not subscribed")) {
       output += "\n💡 TIP: Enable GuardDuty in AWS Console to detect threats automatically.\n";
     }
@@ -2968,7 +2973,7 @@ async function scanSNSSecurity(region: string): Promise<string> {
     const topics = await client.send(listCmd);
     
     if (!topics.Topics || topics.Topics.length === 0) {
-      return output + "✅ No SNS topics found in region.\n";
+      return output + "[OK] No SNS topics found in region.\n";
     }
     
     let criticalCount = 0, highCount = 0, mediumCount = 0;
@@ -2986,17 +2991,17 @@ async function scanSNSSecurity(region: string): Promise<string> {
         const attrs = await client.send(attrsCmd);
         
         if (!attrs.Attributes) {
-          findings.push("⚠️ Could not retrieve attributes");
+          findings.push("[WARN] Could not retrieve attributes");
           output += findings.join("\n") + "\n";
           continue;
         }
         
         // Check encryption
         if (!attrs.Attributes.KmsMasterKeyId || attrs.Attributes.KmsMasterKeyId === "") {
-          findings.push("🔴 CRITICAL: Server-side encryption NOT enabled (messages in plaintext)");
+          findings.push("[CRITICAL] CRITICAL: Server-side encryption NOT enabled (messages in plaintext)");
           criticalCount++;
         } else {
-          findings.push(`🟢 Encryption: KMS key ${attrs.Attributes.KmsMasterKeyId}`);
+          findings.push(`[LOW] Encryption: KMS key ${attrs.Attributes.KmsMasterKeyId}`);
         }
         
         // Check access policy
@@ -3014,7 +3019,7 @@ async function scanSNSSecurity(region: string): Promise<string> {
                     (statement.Principal === "*" || 
                      statement.Principal?.AWS === "*" ||
                      statement.Principal?.Service === "*")) {
-                  findings.push("🔴 CRITICAL: Topic policy allows public access (Principal: *)");
+                  findings.push("[CRITICAL] CRITICAL: Topic policy allows public access (Principal: *)");
                   criticalCount++;
                   hasPublicAccess = true;
                 }
@@ -3023,7 +3028,7 @@ async function scanSNSSecurity(region: string): Promise<string> {
                 if (statement.Effect === "Allow" && 
                     (statement.Action === "*" || 
                      (Array.isArray(statement.Action) && statement.Action.includes("*")))) {
-                  findings.push("🟠 HIGH: Topic policy has wildcard actions (Action: *)");
+                  findings.push("[HIGH] HIGH: Topic policy has wildcard actions (Action: *)");
                   highCount++;
                 }
                 
@@ -3032,7 +3037,7 @@ async function scanSNSSecurity(region: string): Promise<string> {
                   const accountId = statement.Principal.AWS.split(":")[4];
                   const currentAccount = topic.TopicArn.split(":")[4];
                   if (accountId && accountId !== currentAccount) {
-                    findings.push(`🟡 MEDIUM: Cross-account access to ${accountId}`);
+                    findings.push(`[MEDIUM] MEDIUM: Cross-account access to ${accountId}`);
                     mediumCount++;
                     hasCrossAccount = true;
                   }
@@ -3041,10 +3046,10 @@ async function scanSNSSecurity(region: string): Promise<string> {
             }
             
             if (!hasPublicAccess && !hasCrossAccount) {
-              findings.push("🟢 Access Policy: Restricted");
+              findings.push("[LOW] Access Policy: Restricted");
             }
           } catch (e) {
-            findings.push("⚠️ Could not parse topic policy");
+            findings.push("[WARN] Could not parse topic policy");
           }
         }
         
@@ -3058,28 +3063,28 @@ async function scanSNSSecurity(region: string): Promise<string> {
           // Check for HTTP endpoints (should be HTTPS)
           for (const sub of subs.Subscriptions) {
             if (sub.Protocol === "http") {
-              findings.push(`🟠 HIGH: Subscription uses HTTP (not HTTPS): ${sub.Endpoint}`);
+              findings.push(`[HIGH] HIGH: Subscription uses HTTP (not HTTPS): ${sub.Endpoint}`);
               highCount++;
             }
           }
         } else {
-          findings.push("🟡 INFO: No subscriptions configured");
+          findings.push("[MEDIUM] INFO: No subscriptions configured");
         }
         
         output += findings.join("\n") + "\n";
         
       } catch (error: any) {
-        output += `⚠️ Error analyzing topic: ${error.message}\n`;
+        output += `[WARN] Error analyzing topic: ${error.message}\n`;
       }
     }
     
     output += `\n### Severity Summary\n`;
-    output += `- 🔴 CRITICAL: ${criticalCount}\n`;
-    output += `- 🟠 HIGH: ${highCount}\n`;
-    output += `- 🟡 MEDIUM: ${mediumCount}\n`;
+    output += `- [CRITICAL] CRITICAL: ${criticalCount}\n`;
+    output += `- [HIGH] HIGH: ${highCount}\n`;
+    output += `- [MEDIUM] MEDIUM: ${mediumCount}\n`;
     
   } catch (error: any) {
-    output += `\n❌ Error: ${error.message}\n`;
+    output += `\n[FAIL] Error: ${error.message}\n`;
   }
   
   return output;
@@ -3094,7 +3099,7 @@ async function scanSQSSecurity(region: string): Promise<string> {
     const queues = await client.send(listCmd);
     
     if (!queues.QueueUrls || queues.QueueUrls.length === 0) {
-      return output + "✅ No SQS queues found in region.\n";
+      return output + "[OK] No SQS queues found in region.\n";
     }
     
     let criticalCount = 0, highCount = 0, mediumCount = 0;
@@ -3113,17 +3118,17 @@ async function scanSQSSecurity(region: string): Promise<string> {
         const attrs = await client.send(attrsCmd);
         
         if (!attrs.Attributes) {
-          findings.push("⚠️ Could not retrieve attributes");
+          findings.push("[WARN] Could not retrieve attributes");
           output += findings.join("\n") + "\n";
           continue;
         }
         
         // Check encryption
         if (!attrs.Attributes.KmsMasterKeyId || attrs.Attributes.KmsMasterKeyId === "") {
-          findings.push("🔴 CRITICAL: Server-side encryption NOT enabled (messages in plaintext)");
+          findings.push("[CRITICAL] CRITICAL: Server-side encryption NOT enabled (messages in plaintext)");
           criticalCount++;
         } else {
-          findings.push(`🟢 Encryption: KMS key ${attrs.Attributes.KmsMasterKeyId}`);
+          findings.push(`[LOW] Encryption: KMS key ${attrs.Attributes.KmsMasterKeyId}`);
         }
         
         // Check access policy
@@ -3137,32 +3142,32 @@ async function scanSQSSecurity(region: string): Promise<string> {
               for (const statement of policyObj.Statement) {
                 if (statement.Effect === "Allow" && 
                     (statement.Principal === "*" || statement.Principal?.AWS === "*")) {
-                  findings.push("🔴 CRITICAL: Queue policy allows public access (Principal: *)");
+                  findings.push("[CRITICAL] CRITICAL: Queue policy allows public access (Principal: *)");
                   criticalCount++;
                   hasPublicAccess = true;
                 }
                 
                 if (statement.Effect === "Allow" && statement.Action === "*") {
-                  findings.push("🟠 HIGH: Queue policy has wildcard actions");
+                  findings.push("[HIGH] HIGH: Queue policy has wildcard actions");
                   highCount++;
                 }
               }
             }
             
             if (!hasPublicAccess) {
-              findings.push("🟢 Access Policy: Restricted");
+              findings.push("[LOW] Access Policy: Restricted");
             }
           } catch (e) {
-            findings.push("⚠️ Could not parse queue policy");
+            findings.push("[WARN] Could not parse queue policy");
           }
         }
         
         // Check dead letter queue
         if (!attrs.Attributes.RedrivePolicy || attrs.Attributes.RedrivePolicy === "") {
-          findings.push("🟡 MEDIUM: Dead letter queue NOT configured (message loss risk)");
+          findings.push("[MEDIUM] MEDIUM: Dead letter queue NOT configured (message loss risk)");
           mediumCount++;
         } else {
-          findings.push("🟢 Dead Letter Queue: Configured");
+          findings.push("[LOW] Dead Letter Queue: Configured");
         }
         
         // Check message retention
@@ -3170,7 +3175,7 @@ async function scanSQSSecurity(region: string): Promise<string> {
         const retentionDays = Math.floor(retentionSeconds / 86400);
         
         if (retentionDays > 7) {
-          findings.push(`🟡 INFO: Message retention: ${retentionDays} days (consider shorter retention)`);
+          findings.push(`[MEDIUM] INFO: Message retention: ${retentionDays} days (consider shorter retention)`);
         } else {
           findings.push(`Message retention: ${retentionDays} days`);
         }
@@ -3185,17 +3190,17 @@ async function scanSQSSecurity(region: string): Promise<string> {
         output += findings.join("\n") + "\n";
         
       } catch (error: any) {
-        output += `⚠️ Error analyzing queue: ${error.message}\n`;
+        output += `[WARN] Error analyzing queue: ${error.message}\n`;
       }
     }
     
     output += `\n### Severity Summary\n`;
-    output += `- 🔴 CRITICAL: ${criticalCount}\n`;
-    output += `- 🟠 HIGH: ${highCount}\n`;
-    output += `- 🟡 MEDIUM: ${mediumCount}\n`;
+    output += `- [CRITICAL] CRITICAL: ${criticalCount}\n`;
+    output += `- [HIGH] HIGH: ${highCount}\n`;
+    output += `- [MEDIUM] MEDIUM: ${mediumCount}\n`;
     
   } catch (error: any) {
-    output += `\n❌ Error: ${error.message}\n`;
+    output += `\n[FAIL] Error: ${error.message}\n`;
   }
   
   return output;
@@ -3215,7 +3220,7 @@ async function scanCognitoSecurity(region: string): Promise<string> {
     const identityPools = await identityClient.send(listIdPoolsCmd);
     
     if (!identityPools.IdentityPools || identityPools.IdentityPools.length === 0) {
-      output += "✅ No identity pools found.\n\n";
+      output += "[OK] No identity pools found.\n\n";
     } else {
       for (const pool of identityPools.IdentityPools) {
         if (!pool.IdentityPoolId) continue;
@@ -3230,15 +3235,15 @@ async function scanCognitoSecurity(region: string): Promise<string> {
           
           // Check unauthenticated access
           if (poolDetails.AllowUnauthenticatedIdentities === true) {
-            findings.push("🔴 CRITICAL: Unauthenticated access ENABLED (anonymous users can assume IAM role)");
+            findings.push("[CRITICAL] CRITICAL: Unauthenticated access ENABLED (anonymous users can assume IAM role)");
             criticalCount++;
           } else {
-            findings.push("🟢 Unauthenticated access: DISABLED");
+            findings.push("[LOW] Unauthenticated access: DISABLED");
           }
           
           // Check if classic flow is enabled
           if (poolDetails.AllowClassicFlow === true) {
-            findings.push("🟠 HIGH: Classic flow enabled (deprecated authentication method)");
+            findings.push("[HIGH] HIGH: Classic flow enabled (deprecated authentication method)");
             highCount++;
           }
           
@@ -3255,13 +3260,13 @@ async function scanCognitoSecurity(region: string): Promise<string> {
           output += findings.join("\n") + "\n\n";
           
         } catch (error: any) {
-          output += `⚠️ Error analyzing pool: ${error.message}\n\n`;
+          output += `[WARN] Error analyzing pool: ${error.message}\n\n`;
         }
       }
     }
     
   } catch (error: any) {
-    output += `❌ Error listing identity pools: ${error.message}\n\n`;
+    output += `[FAIL] Error listing identity pools: ${error.message}\n\n`;
   }
   
   // Check User Pools
@@ -3271,7 +3276,7 @@ async function scanCognitoSecurity(region: string): Promise<string> {
     const userPools = await idpClient.send(listUserPoolsCmd);
     
     if (!userPools.UserPools || userPools.UserPools.length === 0) {
-      output += "✅ No user pools found.\n\n";
+      output += "[OK] No user pools found.\n\n";
     } else {
       for (const pool of userPools.UserPools) {
         if (!pool.Id) continue;
@@ -3285,39 +3290,39 @@ async function scanCognitoSecurity(region: string): Promise<string> {
           const poolDetails = await idpClient.send(describeCmd);
           
           if (!poolDetails.UserPool) {
-            findings.push("⚠️ Could not retrieve details");
+            findings.push("[WARN] Could not retrieve details");
             output += findings.join("\n") + "\n\n";
             continue;
           }
           
           // Check MFA configuration
           if (poolDetails.UserPool.MfaConfiguration === "OFF") {
-            findings.push("🟠 HIGH: Multi-factor authentication (MFA) NOT enabled");
+            findings.push("[HIGH] HIGH: Multi-factor authentication (MFA) NOT enabled");
             highCount++;
           } else if (poolDetails.UserPool.MfaConfiguration === "OPTIONAL") {
-            findings.push("🟡 MEDIUM: MFA is OPTIONAL (not enforced)");
+            findings.push("[MEDIUM] MEDIUM: MFA is OPTIONAL (not enforced)");
             mediumCount++;
           } else {
-            findings.push(`🟢 MFA: ${poolDetails.UserPool.MfaConfiguration}`);
+            findings.push(`[LOW] MFA: ${poolDetails.UserPool.MfaConfiguration}`);
           }
           
           // Check password policy
           const passwordPolicy = poolDetails.UserPool.Policies?.PasswordPolicy;
           if (passwordPolicy) {
             if ((passwordPolicy.MinimumLength || 0) < 8) {
-              findings.push(`🟠 HIGH: Weak password policy (min length: ${passwordPolicy.MinimumLength})`);
+              findings.push(`[HIGH] HIGH: Weak password policy (min length: ${passwordPolicy.MinimumLength})`);
               highCount++;
             }
             
             if (!passwordPolicy.RequireUppercase || !passwordPolicy.RequireLowercase || 
                 !passwordPolicy.RequireNumbers || !passwordPolicy.RequireSymbols) {
-              findings.push("🟡 MEDIUM: Password policy missing complexity requirements");
+              findings.push("[MEDIUM] MEDIUM: Password policy missing complexity requirements");
               mediumCount++;
             } else {
-              findings.push("🟢 Password policy: Strong");
+              findings.push("[LOW] Password policy: Strong");
             }
           } else {
-            findings.push("🟠 HIGH: No password policy configured");
+            findings.push("[HIGH] HIGH: No password policy configured");
             highCount++;
           }
           
@@ -3333,44 +3338,57 @@ async function scanCognitoSecurity(region: string): Promise<string> {
           // Check email verification
           const autoVerifiedAttributes = poolDetails.UserPool.AutoVerifiedAttributes;
           if (autoVerifiedAttributes && autoVerifiedAttributes.includes("email")) {
-            findings.push("🟢 Email verification: Enabled");
+            findings.push("[LOW] Email verification: Enabled");
           } else {
-            findings.push("🟡 MEDIUM: Email verification NOT enabled");
+            findings.push("[MEDIUM] MEDIUM: Email verification NOT enabled");
             mediumCount++;
           }
           
           output += findings.join("\n") + "\n\n";
           
         } catch (error: any) {
-          output += `⚠️ Error analyzing pool: ${error.message}\n\n`;
+          output += `[WARN] Error analyzing pool: ${error.message}\n\n`;
         }
       }
     }
     
   } catch (error: any) {
-    output += `❌ Error listing user pools: ${error.message}\n\n`;
+    output += `[FAIL] Error listing user pools: ${error.message}\n\n`;
   }
   
   output += `## Severity Summary\n`;
-  output += `- 🔴 CRITICAL: ${criticalCount}\n`;
-  output += `- 🟠 HIGH: ${highCount}\n`;
-  output += `- 🟡 MEDIUM: ${mediumCount}\n`;
+  output += `- [CRITICAL] CRITICAL: ${criticalCount}\n`;
+  output += `- [HIGH] HIGH: ${highCount}\n`;
+  output += `- [MEDIUM] MEDIUM: ${mediumCount}\n`;
   
   return output;
 }
 
-async function generateTRAReport(region: string, framework?: string, format?: string, outputFile?: string): Promise<string> {
+// ============================================
+// TRA REPORT - SECURITY ASSESSMENT
+// ============================================
+
+async function generateTRAReport(
+  region: string, 
+  framework?: string, 
+  format?: string, 
+  outputFile?: string
+): Promise<string> {
   let output = "";
   const selectedFramework = framework || "all";
   const outputFormat = format || "markdown";
   
-  output += `# Threat & Risk Assessment (TRA) Report\n`;
-  output += `**Date:** ${new Date().toISOString().split('T')[0]}\n`;
-  output += `**Region:** ${region}\n`;
-  output += `**Framework:** ${selectedFramework.toUpperCase()}\n\n`;
+  // Report Header
+  output += `# Threat & Risk Assessment (TRA) Report\n\n`;
+  output += `| Property | Value |\n`;
+  output += `|----------|-------|\n`;
+  output += `| **Date** | ${new Date().toISOString().split('T')[0]} |\n`;
+  output += `| **Region** | ${region} |\n`;
+  output += `| **Framework** | ${selectedFramework.toUpperCase()} |\n`;
+  output += `| **Tool** | Nimbus v1.4.2 |\n\n`;
   
   // 1. Executive Summary
-  output += `## 📊 Executive Summary\n\n`;
+  output += `## Executive Summary\n\n`;
   
   const findings = {
     critical: 0,
@@ -3415,15 +3433,15 @@ async function generateTRAReport(region: string, framework?: string, format?: st
     scanResults.push({ name: "Public Resources", output: await enumeratePublicResources(region) });
     
   } catch (error: any) {
-    output += `⚠️ Error during scanning: ${error.message}\n\n`;
+    output += `Error during scanning: ${error.message}\n\n`;
   }
   
-  // Count findings from scan results
+  // Count findings from scan results (match both emoji and text formats)
   for (const result of scanResults) {
-    const criticalMatches = result.output.match(/🔴 CRITICAL/g);
-    const highMatches = result.output.match(/🟠 HIGH/g);
-    const mediumMatches = result.output.match(/🟡 MEDIUM/g);
-    const lowMatches = result.output.match(/🟢 LOW/g);
+    const criticalMatches = result.output.match(/CRITICAL/gi);
+    const highMatches = result.output.match(/\bHIGH\b/gi);
+    const mediumMatches = result.output.match(/\bMEDIUM\b/gi);
+    const lowMatches = result.output.match(/\bLOW\b/gi);
     
     findings.critical += criticalMatches ? criticalMatches.length : 0;
     findings.high += highMatches ? highMatches.length : 0;
@@ -3442,37 +3460,36 @@ async function generateTRAReport(region: string, framework?: string, format?: st
   ) / 10);
   
   const riskLevel = riskScore >= 8 ? "CRITICAL" : riskScore >= 6 ? "HIGH" : riskScore >= 4 ? "MEDIUM" : "LOW";
-  const riskEmoji = riskScore >= 8 ? "🔴" : riskScore >= 6 ? "🟠" : riskScore >= 4 ? "🟡" : "🟢";
   
   output += `### Risk Assessment\n`;
-  output += `**Overall Risk Score:** ${riskEmoji} ${riskScore.toFixed(1)}/10 (${riskLevel})\n\n`;
+  output += `**Overall Risk Score:** ${riskScore.toFixed(1)}/10 (${riskLevel})\n\n`;
   
   output += `### Finding Summary\n`;
   output += `| Severity | Count | Percentage |\n`;
   output += `|----------|-------|------------|\n`;
-  output += `| 🔴 CRITICAL | ${findings.critical} | ${findings.total > 0 ? ((findings.critical/findings.total)*100).toFixed(1) : 0}% |\n`;
-  output += `| 🟠 HIGH | ${findings.high} | ${findings.total > 0 ? ((findings.high/findings.total)*100).toFixed(1) : 0}% |\n`;
-  output += `| 🟡 MEDIUM | ${findings.medium} | ${findings.total > 0 ? ((findings.medium/findings.total)*100).toFixed(1) : 0}% |\n`;
-  output += `| 🟢 LOW | ${findings.low} | ${findings.total > 0 ? ((findings.low/findings.total)*100).toFixed(1) : 0}% |\n`;
+  output += `| CRITICAL | ${findings.critical} | ${findings.total > 0 ? ((findings.critical/findings.total)*100).toFixed(1) : 0}% |\n`;
+  output += `| HIGH | ${findings.high} | ${findings.total > 0 ? ((findings.high/findings.total)*100).toFixed(1) : 0}% |\n`;
+  output += `| MEDIUM | ${findings.medium} | ${findings.total > 0 ? ((findings.medium/findings.total)*100).toFixed(1) : 0}% |\n`;
+  output += `| LOW | ${findings.low} | ${findings.total > 0 ? ((findings.low/findings.total)*100).toFixed(1) : 0}% |\n`;
   output += `| **TOTAL** | **${findings.total}** | **100%** |\n\n`;
   
-  // 2. Compliance Framework Mapping
-  output += `## 🔒 Compliance Framework Mapping\n\n`;
+  // Compliance Framework Mapping
+  output += `## Compliance Framework Mapping\n\n`;
   
   if (selectedFramework === "all" || selectedFramework === "cis") {
     output += `### CIS AWS Foundations Benchmark\n\n`;
     const cisControls = [
-      { id: "1.1", name: "Root account MFA", status: findings.critical > 0 ? "❌ FAIL" : "✅ PASS" },
-      { id: "1.4", "name": "IAM password policy", status: findings.high > 0 ? "⚠️ PARTIAL" : "✅ PASS" },
-      { id: "2.1", name: "CloudTrail enabled", status: "✅ PASS" },
-      { id: "2.3", name: "S3 bucket logging", status: findings.medium > 0 ? "⚠️ PARTIAL" : "✅ PASS" },
-      { id: "2.7", name: "CloudTrail encryption", status: "✅ PASS" },
-      { id: "3.1", name: "VPC flow logs", status: "⚠️ PARTIAL" },
-      { id: "4.1", name: "Security Groups 0.0.0.0/0", status: findings.critical > 0 ? "❌ FAIL" : "✅ PASS" },
-      { id: "4.2", name: "Security Groups SSH/RDP", status: findings.high > 0 ? "❌ FAIL" : "✅ PASS" },
+      { id: "1.1", name: "Root account MFA", status: findings.critical > 0 ? "FAIL" : "PASS" },
+      { id: "1.4", "name": "IAM password policy", status: findings.high > 0 ? "PARTIAL" : "PASS" },
+      { id: "2.1", name: "CloudTrail enabled", status: "PASS" },
+      { id: "2.3", name: "S3 bucket logging", status: findings.medium > 0 ? "PARTIAL" : "PASS" },
+      { id: "2.7", name: "CloudTrail encryption", status: "PASS" },
+      { id: "3.1", name: "VPC flow logs", status: "PARTIAL" },
+      { id: "4.1", name: "Security Groups 0.0.0.0/0", status: findings.critical > 0 ? "FAIL" : "PASS" },
+      { id: "4.2", name: "Security Groups SSH/RDP", status: findings.high > 0 ? "FAIL" : "PASS" },
     ];
     
-    const cisPass = cisControls.filter(c => c.status === "✅ PASS").length;
+    const cisPass = cisControls.filter(c => c.status === "PASS").length;
     const cisTotal = cisControls.length;
     const cisCompliance = ((cisPass / cisTotal) * 100).toFixed(0);
     
@@ -3488,15 +3505,15 @@ async function generateTRAReport(region: string, framework?: string, format?: st
   if (selectedFramework === "all" || selectedFramework === "nist") {
     output += `### NIST 800-53 Controls\n\n`;
     const nistControls = [
-      { id: "AC-2", name: "Account Management", status: findings.high > 0 ? "⚠️ PARTIAL" : "✅ PASS" },
-      { id: "AC-3", name: "Access Enforcement", status: findings.critical > 0 ? "❌ FAIL" : "✅ PASS" },
-      { id: "AC-6", name: "Least Privilege", status: findings.high > 0 ? "❌ FAIL" : "✅ PASS" },
-      { id: "AU-2", name: "Audit Events", status: "✅ PASS" },
-      { id: "SC-8", name: "Transmission Confidentiality", status: findings.critical > 0 ? "❌ FAIL" : "✅ PASS" },
-      { id: "SC-28", name: "Protection of Information at Rest", status: findings.critical > 0 ? "❌ FAIL" : "✅ PASS" },
+      { id: "AC-2", name: "Account Management", status: findings.high > 0 ? "PARTIAL" : "PASS" },
+      { id: "AC-3", name: "Access Enforcement", status: findings.critical > 0 ? "FAIL" : "PASS" },
+      { id: "AC-6", name: "Least Privilege", status: findings.high > 0 ? "FAIL" : "PASS" },
+      { id: "AU-2", name: "Audit Events", status: "PASS" },
+      { id: "SC-8", name: "Transmission Confidentiality", status: findings.critical > 0 ? "FAIL" : "PASS" },
+      { id: "SC-28", name: "Protection of Information at Rest", status: findings.critical > 0 ? "FAIL" : "PASS" },
     ];
     
-    const nistPass = nistControls.filter(c => c.status === "✅ PASS").length;
+    const nistPass = nistControls.filter(c => c.status === "PASS").length;
     const nistTotal = nistControls.length;
     const nistCompliance = ((nistPass / nistTotal) * 100).toFixed(0);
     
@@ -3512,15 +3529,15 @@ async function generateTRAReport(region: string, framework?: string, format?: st
   if (selectedFramework === "all" || selectedFramework === "pci") {
     output += `### PCI-DSS 3.2.1\n\n`;
     const pciControls = [
-      { id: "1.2", name: "Firewall configurations", status: findings.high > 0 ? "❌ FAIL" : "✅ PASS" },
-      { id: "2.1", name: "Default passwords", status: "✅ PASS" },
-      { id: "3.4", name: "Encryption at rest", status: findings.critical > 0 ? "❌ FAIL" : "✅ PASS" },
-      { id: "4.1", name: "Encryption in transit", status: findings.critical > 0 ? "❌ FAIL" : "✅ PASS" },
-      { id: "8.2", name: "Multi-factor authentication", status: findings.high > 0 ? "❌ FAIL" : "✅ PASS" },
-      { id: "10.1", name: "Audit trails", status: "✅ PASS" },
+      { id: "1.2", name: "Firewall configurations", status: findings.high > 0 ? "FAIL" : "PASS" },
+      { id: "2.1", name: "Default passwords", status: "PASS" },
+      { id: "3.4", name: "Encryption at rest", status: findings.critical > 0 ? "FAIL" : "PASS" },
+      { id: "4.1", name: "Encryption in transit", status: findings.critical > 0 ? "FAIL" : "PASS" },
+      { id: "8.2", name: "Multi-factor authentication", status: findings.high > 0 ? "FAIL" : "PASS" },
+      { id: "10.1", name: "Audit trails", status: "PASS" },
     ];
     
-    const pciPass = pciControls.filter(c => c.status === "✅ PASS").length;
+    const pciPass = pciControls.filter(c => c.status === "PASS").length;
     const pciTotal = pciControls.length;
     const pciCompliance = ((pciPass / pciTotal) * 100).toFixed(0);
     
@@ -3534,7 +3551,7 @@ async function generateTRAReport(region: string, framework?: string, format?: st
   }
   
   // 3. Top 10 Critical Findings
-  output += `## 🚨 Top 10 Critical Findings\n\n`;
+  output += `## Top 10 Critical Findings\n\n`;
   const criticalFindings = [
     "Public S3 buckets without encryption",
     "Security Groups allowing 0.0.0.0/0 on SSH/RDP",
@@ -3554,7 +3571,7 @@ async function generateTRAReport(region: string, framework?: string, format?: st
   output += `\n`;
   
   // 4. Attack Surface Analysis
-  output += `## 🎯 Attack Surface Analysis\n\n`;
+  output += `## Attack Surface Analysis\n\n`;
   output += `### Externally Exposed Resources\n`;
   output += `- Public EC2 instances with security group 0.0.0.0/0\n`;
   output += `- Public S3 buckets (data exfiltration risk)\n`;
@@ -3569,7 +3586,7 @@ async function generateTRAReport(region: string, framework?: string, format?: st
   output += `- Cognito identity pools (anonymous AWS credentials)\n\n`;
   
   // 5. MITRE ATT&CK Mapping
-  output += `## 🎭 MITRE ATT&CK Cloud Matrix\n\n`;
+  output += `## MITRE ATT&CK Cloud Matrix\n\n`;
   output += `| Tactic | Technique | Finding |\n`;
   output += `|--------|-----------|----------|\n`;
   output += `| Initial Access | Valid Accounts (T1078) | Weak password policies, no MFA |\n`;
@@ -3584,7 +3601,7 @@ async function generateTRAReport(region: string, framework?: string, format?: st
   output += `| Impact | Data Encrypted for Impact (T1486) | Ransomware via EC2 |\n\n`;
   
   // 6. Remediation Roadmap
-  output += `## 🔧 Remediation Roadmap\n\n`;
+  output += `## Remediation Roadmap\n\n`;
   output += `### Quick Wins (0-7 days)\n`;
   output += `1. Enable MFA on all IAM users\n`;
   output += `2. Remove public access from S3 buckets\n`;
@@ -3628,7 +3645,7 @@ async function generateTRAReport(region: string, framework?: string, format?: st
             .replace(/[\u{1F300}-\u{1F9FF}]/gu, '') // Unicode emoji block
             .replace(/[\u{2600}-\u{27BF}]/gu, '') // Emoticons
             .replace(/[\u{2B50}]/gu, '') // Special symbols
-            .replace(/[🔴🟠🟡🟢✅❌⚠️📊🔒🚨🎯🎭🔧📋💡]/g, '') // Explicit emoji
+            .replace(/[[CRITICAL][HIGH][MEDIUM][LOW][OK][FAIL][WARN]💡]/g, '') // Explicit emoji
             .replace(/^\s+/, '') // Remove leading whitespace
             .trim();
         })
@@ -3659,20 +3676,21 @@ async function generateTRAReport(region: string, framework?: string, format?: st
   
   output += `---\n`;
   output += `**Report Generated:** ${new Date().toISOString()}\n`;
-  output += `**Tool:** AWS Pentest MCP v1.0.0\n`;
-  output += `**Scan Coverage:** 18 AWS services, 26 security tools\n`;
+  output += `**Tool:** Nimbus v1.4.2\n`;
+  output += `**Framework:** ${selectedFramework.toUpperCase()}\n`;
+  output += `**Scan Coverage:** 18 AWS services, 43 security tools\n`;
   
   // Save to file if specified
   if (outputFile) {
     if (outputFormat === "pdf") {
       await generatePDFReport(output, outputFile);
-      output += `\n\n✅ PDF report saved to: ${outputFile}\n`;
+      output += `\n\nPDF report saved to: ${outputFile}\n`;
     } else if (outputFormat === "html") {
       await generateHTMLReport(output, outputFile);
-      output += `\n\n✅ HTML report saved to: ${outputFile}\n`;
+      output += `\n\nHTML report saved to: ${outputFile}\n`;
     } else {
       fs.writeFileSync(outputFile, output);
-      output += `\n\n✅ Report saved to: ${outputFile}\n`;
+      output += `\n\nReport saved to: ${outputFile}\n`;
     }
   }
   
@@ -3965,7 +3983,7 @@ async function scanPrivilegeEscalationPaths(): Promise<string> {
     const usersResponse = await iamClient.send(usersCmd);
     
     if (!usersResponse.Users || usersResponse.Users.length === 0) {
-      return output + "✅ No IAM users found to analyze.\n";
+      return output + "[OK] No IAM users found to analyze.\n";
     }
     
     // Get all managed policies
@@ -4118,7 +4136,7 @@ async function scanPrivilegeEscalationPaths(): Promise<string> {
       
       if (userHasEscalation) {
         const userFindings = findings.filter(f => f.user === userName);
-        output += `### 🔴 ${userName}\n`;
+        output += `### [CRITICAL] ${userName}\n`;
         for (const finding of userFindings) {
           output += `- **${finding.method}:** ${finding.risk}\n`;
         }
@@ -4127,7 +4145,7 @@ async function scanPrivilegeEscalationPaths(): Promise<string> {
     }
     
     if (findings.length === 0) {
-      output += `✅ No privilege escalation paths detected.\n`;
+      output += `[OK] No privilege escalation paths detected.\n`;
     } else {
       output += `## Summary\n`;
       output += `**Critical Escalation Paths Found:** ${findings.filter(f => f.risk.includes("CRITICAL")).length}\n`;
@@ -4135,7 +4153,7 @@ async function scanPrivilegeEscalationPaths(): Promise<string> {
     }
     
   } catch (error: any) {
-    output += `❌ Error analyzing escalation paths: ${error.message}\n`;
+    output += `[FAIL] Error analyzing escalation paths: ${error.message}\n`;
   }
   
   return output;
@@ -4150,7 +4168,7 @@ async function analyzeIAMTrustChains(): Promise<string> {
     const rolesResponse = await iamClient.send(rolesCmd);
     
     if (!rolesResponse.Roles || rolesResponse.Roles.length === 0) {
-      return output + "✅ No IAM roles found to analyze.\n";
+      return output + "[OK] No IAM roles found to analyze.\n";
     }
     
     let criticalCount = 0;
@@ -4171,7 +4189,7 @@ async function analyzeIAMTrustChains(): Promise<string> {
         
         // Check for wildcard principal
         if (statement.Principal === "*" || statement.Principal?.AWS === "*") {
-          findings.push(`🔴 ${role.RoleName}: Wildcard principal (*) - anyone can assume`);
+          findings.push(`[CRITICAL] ${role.RoleName}: Wildcard principal (*) - anyone can assume`);
           criticalCount++;
           hasIssue = true;
         }
@@ -4187,7 +4205,7 @@ async function analyzeIAMTrustChains(): Promise<string> {
             const service = principal.split(".")[0];
             if (["ec2", "lambda", "ecs", "sts"].includes(service)) {
               if (!statement.Condition) {
-                findings.push(`🟠 ${role.RoleName}: ${service.toUpperCase()} can assume without restrictions`);
+                findings.push(`[HIGH] ${role.RoleName}: ${service.toUpperCase()} can assume without restrictions`);
                 highCount++;
                 hasIssue = true;
               }
@@ -4197,24 +4215,24 @@ async function analyzeIAMTrustChains(): Promise<string> {
           // Check for cross-account trusts
           if (typeof principal === "string" && principal.includes("arn:aws:iam::")) {
             const principalAccount = principal.split("::")[1]?.split(":")[0];
-            findings.push(`🟡 ${role.RoleName}: Cross-account trust from ${principalAccount}`);
+            findings.push(`[MEDIUM] ${role.RoleName}: Cross-account trust from ${principalAccount}`);
           }
         }
       }
       
       if (!hasIssue) {
-        findings.push(`✅ ${role.RoleName}: Trust policy appears properly scoped`);
+        findings.push(`[OK] ${role.RoleName}: Trust policy appears properly scoped`);
       }
     }
     
     output += findings.join("\n") + "\n\n";
     output += `## Summary\n`;
-    output += `- 🔴 CRITICAL: ${criticalCount}\n`;
-    output += `- 🟠 HIGH: ${highCount}\n`;
+    output += `- [CRITICAL] CRITICAL: ${criticalCount}\n`;
+    output += `- [HIGH] HIGH: ${highCount}\n`;
     output += `- Total Roles Analyzed: ${rolesResponse.Roles.length}\n`;
     
   } catch (error: any) {
-    output += `❌ Error analyzing trust chains: ${error.message}\n`;
+    output += `[FAIL] Error analyzing trust chains: ${error.message}\n`;
   }
   
   return output;
@@ -4229,7 +4247,7 @@ async function findOverlyPermissiveRoles(): Promise<string> {
     const rolesResponse = await iamClient.send(rolesCmd);
     
     if (!rolesResponse.Roles || rolesResponse.Roles.length === 0) {
-      return output + "✅ No roles found to analyze.\n";
+      return output + "[OK] No roles found to analyze.\n";
     }
     
     const riskySuffixes = [
@@ -4253,7 +4271,7 @@ async function findOverlyPermissiveRoles(): Promise<string> {
       for (const policy of attached.AttachedPolicies || []) {
         // Check for AWS managed admin policies
         if (policy.PolicyArn?.includes("AdministratorAccess")) {
-          findings2.push(`🔴 ${role.RoleName}: Attached to AdministratorAccess managed policy`);
+          findings2.push(`[CRITICAL] ${role.RoleName}: Attached to AdministratorAccess managed policy`);
           criticalCount++;
         }
         
@@ -4261,7 +4279,7 @@ async function findOverlyPermissiveRoles(): Promise<string> {
         const policyName = policy.PolicyName || "";
         for (const suffix of riskySuffixes) {
           if (policyName.includes(suffix)) {
-            findings2.push(`🟠 ${role.RoleName}: Name suggests full access pattern`);
+            findings2.push(`[HIGH] ${role.RoleName}: Name suggests full access pattern`);
             highCount++;
             break;
           }
@@ -4289,10 +4307,10 @@ async function findOverlyPermissiveRoles(): Promise<string> {
               
               // Check for wildcard resource and action
               if (resource.includes("*") && action.includes("*")) {
-                findings2.push(`🔴 ${role.RoleName}: Has unrestricted permissions (*:* on *)`);
+                findings2.push(`[CRITICAL] ${role.RoleName}: Has unrestricted permissions (*:* on *)`);
                 criticalCount++;
               } else if (action.some((a: string) => a === "*" || a.endsWith(":*"))) {
-                findings2.push(`🟠 ${role.RoleName}: Has service-wide wildcard actions`);
+                findings2.push(`[HIGH] ${role.RoleName}: Has service-wide wildcard actions`);
                 highCount++;
               }
               
@@ -4305,7 +4323,7 @@ async function findOverlyPermissiveRoles(): Promise<string> {
               
               for (const actionItem of action) {
                 if (dangerousActions.some(da => actionItem.includes(da))) {
-                  findings2.push(`🟡 ${role.RoleName}: Contains dangerous action (${actionItem})`);
+                  findings2.push(`[MEDIUM] ${role.RoleName}: Contains dangerous action (${actionItem})`);
                   mediumCount++;
                   break;
                 }
@@ -4323,17 +4341,17 @@ async function findOverlyPermissiveRoles(): Promise<string> {
     }
     
     if (findings.length === 0) {
-      output += `✅ No overly permissive roles found.\n`;
+      output += `[OK] No overly permissive roles found.\n`;
     } else {
       output += findings.join("\n") + "\n\n";
       output += `## Summary\n`;
-      output += `- 🔴 CRITICAL: ${criticalCount}\n`;
-      output += `- 🟠 HIGH: ${highCount}\n`;
-      output += `- 🟡 MEDIUM: ${mediumCount}\n`;
+      output += `- [CRITICAL] CRITICAL: ${criticalCount}\n`;
+      output += `- [HIGH] HIGH: ${highCount}\n`;
+      output += `- [MEDIUM] MEDIUM: ${mediumCount}\n`;
     }
     
   } catch (error: any) {
-    output += `❌ Error analyzing roles: ${error.message}\n`;
+    output += `[FAIL] Error analyzing roles: ${error.message}\n`;
   }
   
   return output;
@@ -4348,7 +4366,7 @@ async function detectCrossAccountAccess(): Promise<string> {
     const rolesResponse = await iamClient.send(rolesCmd);
     
     if (!rolesResponse.Roles || rolesResponse.Roles.length === 0) {
-      return output + "✅ No roles found to analyze.\n";
+      return output + "[OK] No roles found to analyze.\n";
     }
     
     // Get current account ID
@@ -4394,9 +4412,9 @@ async function detectCrossAccountAccess(): Promise<string> {
     }
     
     if (Object.keys(crossAccountAccess).length === 0) {
-      output += `✅ No cross-account role access detected.\n`;
+      output += `[OK] No cross-account role access detected.\n`;
     } else {
-      output += `🟡 DETECTED: Cross-account access from ${Object.keys(crossAccountAccess).length} external account(s)\n\n`;
+      output += `[MEDIUM] DETECTED: Cross-account access from ${Object.keys(crossAccountAccess).length} external account(s)\n\n`;
       
       for (const [accountId, roles] of Object.entries(crossAccountAccess)) {
         output += `### Account: ${accountId}\n`;
@@ -4413,7 +4431,7 @@ async function detectCrossAccountAccess(): Promise<string> {
     output += `- External accounts with access: ${Object.keys(crossAccountAccess).length}\n`;
     
   } catch (error: any) {
-    output += `❌ Error detecting cross-account access: ${error.message}\n`;
+    output += `[FAIL] Error detecting cross-account access: ${error.message}\n`;
   }
   
   return output;
@@ -4446,7 +4464,7 @@ async function identifyServiceRoleRisks(): Promise<string> {
         
         if (hasPublicIp) {
           publicInstancesWithRole++;
-          findings.push(`🔴 ${instanceId}: Public IP (${instance.PublicIpAddress}) with IAM role ${roleName}`);
+          findings.push(`[CRITICAL] ${instanceId}: Public IP (${instance.PublicIpAddress}) with IAM role ${roleName}`);
           
           // Check if role is permissive
           try {
@@ -4457,7 +4475,7 @@ async function identifyServiceRoleRisks(): Promise<string> {
               JSON.parse(decodeURIComponent(role.Role.AssumeRolePolicyDocument)) : null;
             
             if (trustPolicy && JSON.stringify(trustPolicy).includes("ec2.amazonaws.com")) {
-              findings.push(`   ⚠️ Role assumable by EC2 service - credentials accessible via metadata`);
+              findings.push(`   [WARN] Role assumable by EC2 service - credentials accessible via metadata`);
             }
           } catch (error) {
             // Skip
@@ -4489,7 +4507,7 @@ async function identifyServiceRoleRisks(): Promise<string> {
         );
         
         if (hasSecrets) {
-          findings.push(`🟠 ${func.FunctionName}: Contains secrets in environment variables`);
+          findings.push(`[HIGH] ${func.FunctionName}: Contains secrets in environment variables`);
           instancesWithHighRiskRole++;
         }
       }
@@ -4508,7 +4526,7 @@ async function identifyServiceRoleRisks(): Promise<string> {
           
           const policyString = JSON.stringify(policyDoc);
           if (policyString.includes('"Action":"*"') || policyString.includes('"Resource":"*"')) {
-            findings.push(`🔴 ${func.FunctionName}: Has wildcard permissions (*:* on *)`);
+            findings.push(`[CRITICAL] ${func.FunctionName}: Has wildcard permissions (*:* on *)`);
             instancesWithHighRiskRole++;
           }
         }
@@ -4518,7 +4536,7 @@ async function identifyServiceRoleRisks(): Promise<string> {
     }
     
     if (findings.length === 0) {
-      output += `✅ No high-risk service role configurations found.\n`;
+      output += `[OK] No high-risk service role configurations found.\n`;
     } else {
       output += findings.join("\n") + "\n\n";
       output += `## Summary\n`;
@@ -4527,7 +4545,7 @@ async function identifyServiceRoleRisks(): Promise<string> {
     }
     
   } catch (error: any) {
-    output += `❌ Error analyzing service role risks: ${error.message}\n`;
+    output += `[FAIL] Error analyzing service role risks: ${error.message}\n`;
   }
   
   return output;
@@ -4541,11 +4559,11 @@ async function detectPersistenceMechanisms(region: string): Promise<string> {
   
   try {
     output += `## EventBridge Persistence Triggers\n\n`;
-    output += `✅ Scanned for scheduled triggers and Lambda backdoors\n\n`;
+    output += `[OK] Scanned for scheduled triggers and Lambda backdoors\n\n`;
     
     output += `## Lambda Layer Persistence\n\n`;
     const lambdaClient = new LambdaClient({ region });
-    output += `✅ Lambda layer analysis (requires extended permissions)\n\n`;
+    output += `[OK] Lambda layer analysis (requires extended permissions)\n\n`;
     
     output += `## IAM Access Key Age (Persistence Indicator)\n\n`;
     const usersCmd = new ListUsersCommand({});
@@ -4558,7 +4576,7 @@ async function detectPersistenceMechanisms(region: string): Promise<string> {
         // Check for old access keys (older than 90 days)
         const userAge = user.CreateDate ? Math.floor((Date.now() - user.CreateDate.getTime()) / (1000 * 60 * 60 * 24)) : 0;
         if (userAge > 90) {
-          findings.push(`🔴 User '${userName}': Account created ${userAge} days ago - potential persistence vector`);
+          findings.push(`[CRITICAL] User '${userName}': Account created ${userAge} days ago - potential persistence vector`);
           oldAccessKeys++;
         }
       } catch (error) {
@@ -4570,13 +4588,13 @@ async function detectPersistenceMechanisms(region: string): Promise<string> {
     output += `## Summary\n`;
     output += `**Persistence Indicators:** ${findings.length}\n`;
     if (findings.length === 0) {
-      output += `✅ No obvious persistence mechanisms detected\n`;
+      output += `[OK] No obvious persistence mechanisms detected\n`;
     } else {
       findings.forEach(f => output += `${f}\n`);
     }
     
   } catch (error: any) {
-    output += `❌ Error: ${error.message}\n`;
+    output += `[FAIL] Error: ${error.message}\n`;
   }
   
   return output;
@@ -4597,13 +4615,13 @@ async function scanForBackdoors(region: string): Promise<string> {
       const suspiciousPatterns = ["backdoor", "shell", "reverse", "exploit"];
       
       if (suspiciousPatterns.some(p => userName.includes(p))) {
-        indicators.push(`🔴 Suspicious user name: ${user.UserName}`);
+        indicators.push(`[CRITICAL] Suspicious user name: ${user.UserName}`);
       }
       
       // Check user age
       const daysSince = Math.floor((Date.now() - (user.CreateDate?.getTime() || 0)) / (1000 * 60 * 60 * 24));
       if (daysSince < 7) {
-        indicators.push(`🟡 Newly created user: ${user.UserName} (${daysSince} days)`);
+        indicators.push(`[MEDIUM] Newly created user: ${user.UserName} (${daysSince} days)`);
       }
     }
     output += `Checked ${users.Users?.length || 0} users\n\n`;
@@ -4618,11 +4636,11 @@ async function scanForBackdoors(region: string): Promise<string> {
       const suspiciousNames = ["backdoor", "shell", "exec", "exploit"];
       
       if (suspiciousNames.some(s => funcName.includes(s))) {
-        indicators.push(`🔴 Suspicious Lambda function: ${func.FunctionName}`);
+        indicators.push(`[CRITICAL] Suspicious Lambda function: ${func.FunctionName}`);
       }
       
       if (func.Timeout && func.Timeout > 300) {
-        indicators.push(`🟡 Lambda with excessive timeout (${func.Timeout}s): ${func.FunctionName}`);
+        indicators.push(`[MEDIUM] Lambda with excessive timeout (${func.Timeout}s): ${func.FunctionName}`);
       }
     }
     output += `Analyzed ${functions.Functions?.length || 0} functions\n\n`;
@@ -4635,7 +4653,7 @@ async function scanForBackdoors(region: string): Promise<string> {
     for (const role of roles.Roles || []) {
       const roleName = role.RoleName?.toLowerCase() || "";
       if (roleName.includes("backdoor") || roleName.includes("exploit")) {
-        indicators.push(`🔴 Suspicious role: ${role.RoleName}`);
+        indicators.push(`[CRITICAL] Suspicious role: ${role.RoleName}`);
         suspiciousRoles++;
       }
     }
@@ -4644,13 +4662,13 @@ async function scanForBackdoors(region: string): Promise<string> {
     output += `## Summary\n`;
     output += `**Backdoor Indicators:** ${indicators.length}\n`;
     if (indicators.length === 0) {
-      output += `✅ No backdoor indicators found\n`;
+      output += `[OK] No backdoor indicators found\n`;
     } else {
       indicators.forEach(i => output += `${i}\n`);
     }
     
   } catch (error: any) {
-    output += `❌ Error: ${error.message}\n`;
+    output += `[FAIL] Error: ${error.message}\n`;
   }
   
   return output;
@@ -4692,7 +4710,7 @@ async function analyzeServiceRoleChain(region: string): Promise<string> {
     output += `Verify PassRole and Lambda permissions in respective roles\n`;
     
   } catch (error: any) {
-    output += `❌ Error: ${error.message}\n`;
+    output += `[FAIL] Error: ${error.message}\n`;
   }
   
   return output;
@@ -4709,9 +4727,9 @@ async function trackCrossAccountMovement(): Promise<string> {
     const pools = await cognitoClient.send(poolsCmd);
     
     if (pools.IdentityPools && pools.IdentityPools.length > 0) {
-      output += `🟡 Found ${pools.IdentityPools.length} identity pools - check for unauthenticated access\n`;
+      output += `[MEDIUM] Found ${pools.IdentityPools.length} identity pools - check for unauthenticated access\n`;
     } else {
-      output += `✅ No Cognito Identity Pools\n`;
+      output += `[OK] No Cognito Identity Pools\n`;
     }
     output += `\n`;
     
@@ -4736,7 +4754,7 @@ async function trackCrossAccountMovement(): Promise<string> {
     output += `Cross-account lateral movement vectors detected: ${crossAccountRoles > 0 ? "Yes" : "No"}\n`;
     
   } catch (error: any) {
-    output += `❌ Error: ${error.message}\n`;
+    output += `[FAIL] Error: ${error.message}\n`;
   }
   
   return output;
@@ -4756,7 +4774,7 @@ async function detectMFABypassVectors(region: string): Promise<string> {
       try {
         // Access keys allow API calls without MFA
         usersWithKeys++;
-        output += `🟡 User '${user.UserName}' has programmatic access capability\n`;
+        output += `[MEDIUM] User '${user.UserName}' has programmatic access capability\n`;
       } catch (error) {
         // Skip
       }
@@ -4783,7 +4801,7 @@ async function detectMFABypassVectors(region: string): Promise<string> {
       }
       output += `**User pools without required MFA:** ${mfaNotRequired}/${userPools.UserPools.length}\n\n`;
     } else {
-      output += `✅ No Cognito user pools\n\n`;
+      output += `[OK] No Cognito user pools\n\n`;
     }
     
     output += `## Summary\n`;
@@ -4791,7 +4809,7 @@ async function detectMFABypassVectors(region: string): Promise<string> {
     output += `Access keys allow API calls without MFA requirement\n`;
     
   } catch (error: any) {
-    output += `❌ Error: ${error.message}\n`;
+    output += `[FAIL] Error: ${error.message}\n`;
   }
   
   return output;
@@ -4828,7 +4846,7 @@ async function analyzeCloudWatchSecurity(region: string): Promise<string> {
     ) || [];
 
     if (securityAlarms.length === 0) {
-      output += `⚠️ **WARNING:** No security-focused alarms detected!\n\n`;
+      output += `[WARN] **WARNING:** No security-focused alarms detected!\n\n`;
       output += `**Recommendation:** Create alarms for:\n`;
       output += `- Root account usage\n`;
       output += `- IAM policy changes\n`;
@@ -4846,7 +4864,7 @@ async function analyzeCloudWatchSecurity(region: string): Promise<string> {
     // Check for disabled alarms
     const disabledAlarms = alarms.MetricAlarms?.filter(a => !a.ActionsEnabled) || [];
     if (disabledAlarms.length > 0) {
-      output += `⚠️ **Alarms with disabled actions:** ${disabledAlarms.length}\n`;
+      output += `[WARN] **Alarms with disabled actions:** ${disabledAlarms.length}\n`;
       for (const alarm of disabledAlarms) {
         output += `- ${alarm.AlarmName}\n`;
       }
@@ -4863,7 +4881,7 @@ async function analyzeCloudWatchSecurity(region: string): Promise<string> {
     output += `| ConsoleLoginFailures | CloudTrail | Failed logins |\n`;
 
   } catch (error: any) {
-    output += `❌ Error: ${error.message}\n`;
+    output += `[FAIL] Error: ${error.message}\n`;
   }
 
   return output;
@@ -4930,7 +4948,7 @@ async function analyzeIAMPrivilegeEscalation(targetRole?: string): Promise<strin
         output += `\n...and ${escalationPaths.length - 20} more\n`;
       }
     } else {
-      output += `✅ No obvious escalation paths found\n`;
+      output += `[OK] No obvious escalation paths found\n`;
     }
 
     output += `\n## Common Privilege Escalation Techniques\n\n`;
@@ -4943,7 +4961,7 @@ async function analyzeIAMPrivilegeEscalation(targetRole?: string): Promise<strin
     output += `| CloudFormation stack | cloudformation:* | CRITICAL |\n`;
 
   } catch (error: any) {
-    output += `❌ Error: ${error.message}\n`;
+    output += `[FAIL] Error: ${error.message}\n`;
   }
 
   return output;
@@ -4983,7 +5001,7 @@ async function scanSSMSecurity(region: string): Promise<string> {
     output += `| Patch compliance bypass | MEDIUM | Compliance dashboard |\n`;
 
   } catch (error: any) {
-    output += `❌ Error: ${error.message}\n`;
+    output += `[FAIL] Error: ${error.message}\n`;
   }
 
   return output;
@@ -5023,7 +5041,7 @@ async function analyzeEC2MetadataExposure(region: string): Promise<string> {
 
     output += `## IMDSv1 Exposure (SSRF Vulnerable)\n\n`;
     if (imdsV1Instances.length > 0) {
-      output += `⚠️ **${imdsV1Instances.length} instances with IMDSv1 enabled (SSRF risk)**\n\n`;
+      output += `[WARN] **${imdsV1Instances.length} instances with IMDSv1 enabled (SSRF risk)**\n\n`;
       for (const id of imdsV1Instances.slice(0, 15)) {
         output += `- \`${id}\`\n`;
       }
@@ -5032,7 +5050,7 @@ async function analyzeEC2MetadataExposure(region: string): Promise<string> {
       }
       output += `\n**Attack:** SSRF → http://169.254.169.254/latest/meta-data/iam/security-credentials/\n\n`;
     } else {
-      output += `✅ All instances require IMDSv2 (HttpTokens=required)\n\n`;
+      output += `[OK] All instances require IMDSv2 (HttpTokens=required)\n\n`;
     }
 
     output += `## Instances with IAM Roles\n\n`;
@@ -5054,7 +5072,7 @@ async function analyzeEC2MetadataExposure(region: string): Promise<string> {
     output += `\`\`\`\n`;
 
   } catch (error: any) {
-    output += `❌ Error: ${error.message}\n`;
+    output += `[FAIL] Error: ${error.message}\n`;
   }
 
   return output;
@@ -5148,16 +5166,16 @@ async function scanResourcePolicies(region: string, resourceType?: string): Prom
 
     // Display findings
     if (findings.length > 0) {
-      output += `## ⚠️ Security Findings\n\n`;
+      output += `## [WARN] Security Findings\n\n`;
       for (const finding of findings) {
         output += `- ${finding}\n`;
       }
     } else {
-      output += `✅ No overly permissive policies found\n`;
+      output += `[OK] No overly permissive policies found\n`;
     }
 
   } catch (error: any) {
-    output += `❌ Error: ${error.message}\n`;
+    output += `[FAIL] Error: ${error.message}\n`;
   }
 
   return output;
@@ -5184,7 +5202,7 @@ async function analyzeNetworkExposure(region: string): Promise<string> {
       const vpcName = vpc.Tags?.find(t => t.Key === 'Name')?.Value || vpc.VpcId;
       output += `### ${vpcName}\n`;
       output += `- CIDR: ${vpc.CidrBlock}\n`;
-      output += `- Default: ${vpc.IsDefault ? 'Yes ⚠️' : 'No'}\n\n`;
+      output += `- Default: ${vpc.IsDefault ? 'Yes [WARN]' : 'No'}\n\n`;
     }
 
     // Security Groups with 0.0.0.0/0
@@ -5209,7 +5227,7 @@ async function analyzeNetworkExposure(region: string): Promise<string> {
         output += `- ${sg}\n`;
       }
     } else {
-      output += `✅ No security groups with 0.0.0.0/0 inbound\n`;
+      output += `[OK] No security groups with 0.0.0.0/0 inbound\n`;
     }
 
     output += `\n## Egress Points\n\n`;
@@ -5221,7 +5239,7 @@ async function analyzeNetworkExposure(region: string): Promise<string> {
     output += `- VPC Peering connections\n`;
 
   } catch (error: any) {
-    output += `❌ Error: ${error.message}\n`;
+    output += `[FAIL] Error: ${error.message}\n`;
   }
 
   return output;
@@ -5255,7 +5273,7 @@ async function detectDataExfiltrationPaths(region: string): Promise<string> {
     }
 
     if (externalConnections.length > 0) {
-      output += `⚠️ **Lambdas with potential external access:**\n\n`;
+      output += `[WARN] **Lambdas with potential external access:**\n\n`;
       for (const conn of externalConnections.slice(0, 10)) {
         output += `- ${conn}\n`;
       }
@@ -5279,7 +5297,7 @@ async function detectDataExfiltrationPaths(region: string): Promise<string> {
     output += `4. Set up GuardDuty for anomaly detection\n`;
 
   } catch (error: any) {
-    output += `❌ Error: ${error.message}\n`;
+    output += `[FAIL] Error: ${error.message}\n`;
   }
 
   return output;
@@ -5441,11 +5459,11 @@ kubectl exec -it <pod> -- curl -s http://169.254.169.254/latest/meta-data/iam/se
 ## Cluster Security Configuration
 | Setting | Status |
 |---------|--------|
-| OIDC Provider (IRSA) | ${cluster.identity?.oidc?.issuer ? '✅ Configured' : '❌ Not Configured'} |
-| Secrets Encryption | ${cluster.encryptionConfig?.length ? '✅ Enabled' : '❌ Disabled'} |
-| Public Endpoint | ${cluster.resourcesVpcConfig?.endpointPublicAccess ? '⚠️ Yes' : '✅ No'} |
-| Private Endpoint | ${cluster.resourcesVpcConfig?.endpointPrivateAccess ? '✅ Yes' : '❌ No'} |
-| Control Plane Logging | ${loggingEnabled ? '✅ Enabled' : '❌ Disabled'} |
+| OIDC Provider (IRSA) | ${cluster.identity?.oidc?.issuer ? '[OK] Configured' : '[FAIL] Not Configured'} |
+| Secrets Encryption | ${cluster.encryptionConfig?.length ? '[OK] Enabled' : '[FAIL] Disabled'} |
+| Public Endpoint | ${cluster.resourcesVpcConfig?.endpointPublicAccess ? '[WARN] Yes' : '[OK] No'} |
+| Private Endpoint | ${cluster.resourcesVpcConfig?.endpointPrivateAccess ? '[OK] Yes' : '[FAIL] No'} |
+| Control Plane Logging | ${loggingEnabled ? '[OK] Enabled' : '[FAIL] Disabled'} |
 
 ${oidcInfo}
 
@@ -5473,8 +5491,8 @@ async function huntEKSSecrets(region: string, clusterName: string): Promise<stri
     }
 
     const irsaStatus = cluster.identity?.oidc?.issuer 
-      ? '✅ Enabled - Pods should use IRSA instead' 
-      : '❌ Disabled - Pods likely using node role!';
+      ? '[OK] Enabled - Pods should use IRSA instead' 
+      : '[FAIL] Disabled - Pods likely using node role!';
 
     const report = `# EKS Secret Hunting Guide
 
@@ -5486,9 +5504,9 @@ async function huntEKSSecrets(region: string, clusterName: string): Promise<stri
 ## Cluster Secret Configuration
 | Feature | Status |
 |---------|--------|
-| IRSA (OIDC Provider) | ${cluster.identity?.oidc?.issuer ? '✅ Enabled' : '❌ Disabled'} |
-| Secrets Encryption | ${cluster.encryptionConfig?.length ? '✅ KMS Encrypted' : '❌ Not Encrypted'} |
-| Private Endpoint | ${cluster.resourcesVpcConfig?.endpointPrivateAccess ? '✅ Yes' : '❌ No'} |
+| IRSA (OIDC Provider) | ${cluster.identity?.oidc?.issuer ? '[OK] Enabled' : '[FAIL] Disabled'} |
+| Secrets Encryption | ${cluster.encryptionConfig?.length ? '[OK] KMS Encrypted' : '[FAIL] Not Encrypted'} |
+| Private Endpoint | ${cluster.resourcesVpcConfig?.endpointPrivateAccess ? '[OK] Yes' : '[FAIL] No'} |
 
 ---
 
@@ -5664,10 +5682,10 @@ async function scanRegionForEC2(region: string): Promise<RegionResult> {
       for (const instance of reservation.Instances || []) {
         instances.push(instance);
         if (instance.PublicIpAddress) {
-          findings.push(`🔴 ${instance.InstanceId} has public IP: ${instance.PublicIpAddress}`);
+          findings.push(`[CRITICAL] ${instance.InstanceId} has public IP: ${instance.PublicIpAddress}`);
         }
         if (instance.IamInstanceProfile) {
-          findings.push(`🟡 ${instance.InstanceId} has IAM role: ${instance.IamInstanceProfile.Arn?.split("/").pop()}`);
+          findings.push(`[MEDIUM] ${instance.InstanceId} has IAM role: ${instance.IamInstanceProfile.Arn?.split("/").pop()}`);
         }
       }
     }
@@ -5686,9 +5704,9 @@ async function scanRegionForLambda(region: string): Promise<RegionResult> {
     
     for (const fn of response.Functions || []) {
       if (fn.VpcConfig?.VpcId) {
-        findings.push(`🟢 ${fn.FunctionName} is in VPC: ${fn.VpcConfig.VpcId}`);
+        findings.push(`[LOW] ${fn.FunctionName} is in VPC: ${fn.VpcConfig.VpcId}`);
       } else {
-        findings.push(`🟡 ${fn.FunctionName} is NOT in VPC (public internet)`);
+        findings.push(`[MEDIUM] ${fn.FunctionName} is NOT in VPC (public internet)`);
       }
       if (fn.Environment?.Variables) {
         const envKeys = Object.keys(fn.Environment.Variables);
@@ -5696,7 +5714,7 @@ async function scanRegionForLambda(region: string): Promise<RegionResult> {
           /secret|password|key|token|api/i.test(k)
         );
         if (sensitiveKeys.length > 0) {
-          findings.push(`🔴 ${fn.FunctionName} has sensitive env vars: ${sensitiveKeys.join(", ")}`);
+          findings.push(`[CRITICAL] ${fn.FunctionName} has sensitive env vars: ${sensitiveKeys.join(", ")}`);
         }
       }
     }
@@ -5715,13 +5733,13 @@ async function scanRegionForRDS(region: string): Promise<RegionResult> {
     
     for (const db of response.DBInstances || []) {
       if (db.PubliclyAccessible) {
-        findings.push(`🔴 CRITICAL: ${db.DBInstanceIdentifier} is publicly accessible!`);
+        findings.push(`[CRITICAL] CRITICAL: ${db.DBInstanceIdentifier} is publicly accessible!`);
       }
       if (!db.StorageEncrypted) {
-        findings.push(`🔴 ${db.DBInstanceIdentifier} storage is NOT encrypted`);
+        findings.push(`[CRITICAL] ${db.DBInstanceIdentifier} storage is NOT encrypted`);
       }
       if (!db.DeletionProtection) {
-        findings.push(`🟡 ${db.DBInstanceIdentifier} has no deletion protection`);
+        findings.push(`[MEDIUM] ${db.DBInstanceIdentifier} has no deletion protection`);
       }
     }
     
@@ -5743,16 +5761,16 @@ async function scanRegionForEKS(region: string): Promise<RegionResult> {
         const cluster = clusterResponse.cluster;
         
         if (cluster?.resourcesVpcConfig?.endpointPublicAccess) {
-          findings.push(`🟡 ${clusterName} has public API endpoint`);
+          findings.push(`[MEDIUM] ${clusterName} has public API endpoint`);
         }
         if (!cluster?.encryptionConfig || cluster.encryptionConfig.length === 0) {
-          findings.push(`🔴 ${clusterName} secrets NOT encrypted at rest`);
+          findings.push(`[CRITICAL] ${clusterName} secrets NOT encrypted at rest`);
         }
         if (!cluster?.logging?.clusterLogging?.some(l => l.enabled)) {
-          findings.push(`🟡 ${clusterName} logging disabled`);
+          findings.push(`[MEDIUM] ${clusterName} logging disabled`);
         }
       } catch (e) {
-        findings.push(`⚠️ Could not describe cluster: ${clusterName}`);
+        findings.push(`[WARN] Could not describe cluster: ${clusterName}`);
       }
     }
     
@@ -5770,15 +5788,15 @@ async function scanRegionForSecrets(region: string): Promise<RegionResult> {
     
     for (const secret of response.SecretList || []) {
       if (!secret.KmsKeyId) {
-        findings.push(`🟡 ${secret.Name} using default AWS KMS (consider CMK)`);
+        findings.push(`[MEDIUM] ${secret.Name} using default AWS KMS (consider CMK)`);
       }
       if (!secret.RotationEnabled) {
-        findings.push(`🔴 ${secret.Name} rotation NOT enabled`);
+        findings.push(`[CRITICAL] ${secret.Name} rotation NOT enabled`);
       }
       if (secret.LastAccessedDate) {
         const daysSinceAccess = Math.floor((Date.now() - secret.LastAccessedDate.getTime()) / (1000 * 60 * 60 * 24));
         if (daysSinceAccess > 90) {
-          findings.push(`🟡 ${secret.Name} not accessed in ${daysSinceAccess} days (stale?)`);
+          findings.push(`[MEDIUM] ${secret.Name} not accessed in ${daysSinceAccess} days (stale?)`);
         }
       }
     }
@@ -5796,7 +5814,7 @@ async function scanRegionForGuardDuty(region: string): Promise<RegionResult> {
     const findings: string[] = [];
     
     if (!detectorsResponse.DetectorIds || detectorsResponse.DetectorIds.length === 0) {
-      findings.push(`🔴 CRITICAL: GuardDuty NOT enabled in ${region}!`);
+      findings.push(`[CRITICAL] CRITICAL: GuardDuty NOT enabled in ${region}!`);
       return { region, resourceCount: 0, findings };
     }
     
@@ -5812,7 +5830,7 @@ async function scanRegionForGuardDuty(region: string): Promise<RegionResult> {
       }));
       
       if (findingsResponse.FindingIds && findingsResponse.FindingIds.length > 0) {
-        findings.push(`🔴 ${findingsResponse.FindingIds.length} active GuardDuty findings (severity >= Medium)`);
+        findings.push(`[CRITICAL] ${findingsResponse.FindingIds.length} active GuardDuty findings (severity >= Medium)`);
         
         const detailedFindings = await client.send(new GetFindingsCommand({
           DetectorId: detectorId,
@@ -5823,7 +5841,7 @@ async function scanRegionForGuardDuty(region: string): Promise<RegionResult> {
           findings.push(`  - ${finding.Type}: ${finding.Title} (Severity: ${finding.Severity})`);
         }
       } else {
-        findings.push(`🟢 No active GuardDuty findings`);
+        findings.push(`[LOW] No active GuardDuty findings`);
       }
     }
     
@@ -5841,13 +5859,13 @@ async function scanRegionForElastiCache(region: string): Promise<RegionResult> {
     
     for (const cluster of response.CacheClusters || []) {
       if (!cluster.TransitEncryptionEnabled) {
-        findings.push(`🔴 ${cluster.CacheClusterId} transit encryption disabled`);
+        findings.push(`[CRITICAL] ${cluster.CacheClusterId} transit encryption disabled`);
       }
       if (!cluster.AtRestEncryptionEnabled) {
-        findings.push(`🔴 ${cluster.CacheClusterId} at-rest encryption disabled`);
+        findings.push(`[CRITICAL] ${cluster.CacheClusterId} at-rest encryption disabled`);
       }
       if (!cluster.AuthTokenEnabled) {
-        findings.push(`🟡 ${cluster.CacheClusterId} AUTH not enabled`);
+        findings.push(`[MEDIUM] ${cluster.CacheClusterId} AUTH not enabled`);
       }
     }
     
@@ -5866,7 +5884,7 @@ async function scanRegionForVPC(region: string): Promise<RegionResult> {
     for (const vpc of response.Vpcs || []) {
       const vpcName = vpc.Tags?.find(t => t.Key === "Name")?.Value || vpc.VpcId;
       if (vpc.IsDefault) {
-        findings.push(`🟡 ${vpcName} is the DEFAULT VPC (consider using custom VPC)`);
+        findings.push(`[MEDIUM] ${vpcName} is the DEFAULT VPC (consider using custom VPC)`);
       }
       
       // Check for flow logs
@@ -6051,8 +6069,8 @@ async function scanAllRegions(
   }
   
   // Critical findings highlight
-  const criticalKeywords = ["CRITICAL", "🔴"];
-  output += `\n## 🔴 Critical Findings\n\n`;
+  const criticalKeywords = ["CRITICAL", "[CRITICAL]"];
+  output += `\n## [CRITICAL] Critical Findings\n\n`;
   let criticalCount = 0;
   for (const result of results) {
     for (const finding of result.findings) {
@@ -6063,7 +6081,7 @@ async function scanAllRegions(
     }
   }
   if (criticalCount === 0) {
-    output += `No critical findings detected! ✅\n`;
+    output += `No critical findings detected! [OK]\n`;
   }
   
   return output;
@@ -6161,7 +6179,7 @@ async function listActiveRegions(scanMode?: string, regionsInput?: string): Prom
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("AWS Pentest MCP Server running on stdio");
+  console.error("Nimbus MCP Server running on stdio");
   console.error(`Default region: ${DEFAULT_REGION}`);
   console.error("Authentication: Using AWS credentials from environment/config");
 }
@@ -6170,3 +6188,4 @@ main().catch((error) => {
   console.error("Fatal error:", error);
   process.exit(1);
 });
+

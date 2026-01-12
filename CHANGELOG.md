@@ -1,9 +1,17 @@
 # Changelog
 
-All notable changes to the AWS Penetration Testing MCP Server will be documented in this file.
+All notable changes to **Nimbus** (AWS Security Assessment MCP Server) will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.4.2] - 2026-01-12
+
+### Changed
+- **Cleaner report output** - Professional text-based formatting for better readability
+- **TRA Report** - Supports CIS, NIST, PCI-DSS compliance frameworks
+
+---
 
 ## [1.4.0] - 2026-01-11
 
@@ -20,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cache TTLs: EC2 (2min), IAM (10min), S3 (10min)
 
 ### Changed
-- Total tools: **45** (up from 43)
+- Total tools: **43** (cache tools replace manual cache management)
 - Key functions now use cache for faster repeated scans
 - API calls wrapped with retry logic for reliability
 
