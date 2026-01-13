@@ -71,6 +71,34 @@ const COMMON_REGIONS = [
   "ap-south-1", "ap-northeast-1", "ap-southeast-1", "ap-southeast-2"
 ];
 
+// Helper function to resolve region parameter
+function resolveRegions(region: string): string[] {
+  if (region === "all") return AWS_REGIONS;
+  if (region === "common") return COMMON_REGIONS;
+  return [region];
+}
+
+// Multi-region scan wrapper
+async function multiRegionScan<T>(
+  region: string,
+  scanFn: (r: string) => Promise<T>,
+  formatFn: (results: { region: string; data: T }[]) => string
+): Promise<string> {
+  const regions = resolveRegions(region);
+  const results: { region: string; data: T }[] = [];
+  
+  for (const r of regions) {
+    try {
+      const data = await scanFn(r);
+      results.push({ region: r, data });
+    } catch (error: any) {
+      // Skip regions with no access or no resources
+    }
+  }
+  
+  return formatFn(results);
+}
+
 const ec2Client = new EC2Client({ region: DEFAULT_REGION });
 const s3Client = new S3Client({ region: DEFAULT_REGION });
 const iamClient = new IAMClient({ region: DEFAULT_REGION });
@@ -137,13 +165,13 @@ const TOOLS: Tool[] = [
   // ========== ENUMERATION & DISCOVERY TOOLS ==========
   {
     name: "enumerate_ec2_instances",
-    description: "List all EC2 instances with security details (public IPs, security groups, IAM roles)",
+    description: "List all EC2 instances with security details (public IPs, security groups, IAM roles). Use region: 'all' for all regions or 'common' for top 11 regions.",
     inputSchema: {
       type: "object",
       properties: {
         region: {
           type: "string",
-          description: "AWS region to scan (e.g., us-east-1, eu-west-1)",
+          description: "AWS region to scan (e.g., us-east-1), 'all' for all 28 regions, 'common' for top 11 regions",
         },
       },
       required: ["region"],
@@ -827,8 +855,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       // ========== ENUMERATION & DISCOVERY TOOLS ==========
       case "enumerate_ec2_instances":
-        if (!args || !args.region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await enumerateEC2Instances(args.region as string) }] };
+        if (!args || !args.region) throw new Error("region is required (use 'all', 'common', or specific region like 'us-east-1')");
+        return { content: [{ type: "text", text: await enumerateEC2InstancesMultiRegion(args.region as string) }] };
 
       case "analyze_s3_security":
         return { content: [{ type: "text", text: await analyzeS3Security(args?.bucketName as string | undefined, args?.scanMode as string | undefined) }] };
@@ -840,16 +868,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: await enumerateIAMRoles() }] };
 
       case "enumerate_rds_databases":
-        if (!args || !args.region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await enumerateRDSDatabases(args.region as string) }] };
+        if (!args || !args.region) throw new Error("region is required (use 'all', 'common', or specific region)");
+        return { content: [{ type: "text", text: await enumerateRDSDatabasesMultiRegion(args.region as string) }] };
 
       case "analyze_network_security":
-        if (!args || !args.region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await analyzeNetworkSecurity(args.region as string, args?.scanMode as string | undefined) }] };
+        if (!args || !args.region) throw new Error("region is required (use 'all', 'common', or specific region)");
+        return { content: [{ type: "text", text: await analyzeNetworkSecurityMultiRegion(args.region as string, args?.scanMode as string | undefined) }] };
 
       case "analyze_lambda_security":
-        if (!args || !args.region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await analyzeLambdaSecurity(args.region as string, args?.scanMode as string | undefined) }] };
+        if (!args || !args.region) throw new Error("region is required (use 'all', 'common', or specific region)");
+        return { content: [{ type: "text", text: await analyzeLambdaSecurityMultiRegion(args.region as string, args?.scanMode as string | undefined) }] };
 
       // ========== NETWORK & INFRASTRUCTURE SECURITY ==========
       case "enumerate_eks_clusters":
@@ -868,8 +896,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: await scanSecretsManager(args.region as string) }] };
 
       case "enumerate_public_resources":
-        if (!args || !args.region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await enumeratePublicResources(args.region as string) }] };
+        if (!args || !args.region) throw new Error("region is required (use 'all', 'common', or specific region)");
+        return { content: [{ type: "text", text: await enumeratePublicResourcesMultiRegion(args.region as string) }] };
 
       case "analyze_attack_paths":
         if (!args || !args.region) throw new Error("region is required");
@@ -1288,6 +1316,33 @@ async function analyzeIAMUsers(policyArn?: string, scanMode?: string): Promise<s
   return output;
 }
 
+// Multi-region Network Security analysis
+async function analyzeNetworkSecurityMultiRegion(region: string, scanMode?: string): Promise<string> {
+  const regions = resolveRegions(region);
+  
+  if (regions.length === 1) {
+    return analyzeNetworkSecurity(regions[0], scanMode);
+  }
+  
+  let output = `# Network Security - Multi-Region Scan\n\n`;
+  output += `**Scanning ${regions.length} regions:** ${region === 'all' ? 'ALL' : region === 'common' ? 'COMMON' : region}\n\n`;
+  
+  for (const r of regions) {
+    try {
+      const regionResult = await analyzeNetworkSecurity(r, scanMode);
+      if (!regionResult.includes("No VPCs found") || !regionResult.includes("No security groups")) {
+        output += `## Region: ${r}\n\n`;
+        output += regionResult.replace(/# Network Security Analysis\n\n/g, '');
+        output += `\n---\n\n`;
+      }
+    } catch (error: any) {
+      // Skip regions with access issues
+    }
+  }
+  
+  return output;
+}
+
 async function analyzeNetworkSecurity(region: string, scanMode?: string): Promise<string> {
   const mode = scanMode || "both";
   let output = "# Network Security Analysis\n\n";
@@ -1297,6 +1352,51 @@ async function analyzeNetworkSecurity(region: string, scanMode?: string): Promis
   if (mode === "security_groups" || mode === "both") {
     output += "## Security Groups\n" + await analyzeSecurityGroups(region) + "\n";
   }
+  return output;
+}
+
+// Multi-region Lambda Security analysis
+async function analyzeLambdaSecurityMultiRegion(region: string, scanMode?: string): Promise<string> {
+  const regions = resolveRegions(region);
+  
+  if (regions.length === 1) {
+    return analyzeLambdaSecurity(regions[0], scanMode);
+  }
+  
+  let output = `# Lambda Security - Multi-Region Scan\n\n`;
+  output += `**Scanning ${regions.length} regions:** ${region === 'all' ? 'ALL' : region === 'common' ? 'COMMON' : region}\n\n`;
+  
+  let totalFunctions = 0;
+  
+  for (const r of regions) {
+    try {
+      const client = new LambdaClient({ region: r });
+      const command = new ListFunctionsCommand({});
+      const response = await client.send(command);
+      
+      if (response.Functions && response.Functions.length > 0) {
+        output += `## Region: ${r} (${response.Functions.length} functions)\n\n`;
+        totalFunctions += response.Functions.length;
+        
+        for (const fn of response.Functions) {
+          const name = fn.FunctionName || "N/A";
+          const runtime = fn.Runtime || "N/A";
+          const role = fn.Role?.split("/").pop() || "N/A";
+          output += `- **${name}** (${runtime}) | Role: ${role}\n`;
+        }
+        output += `\n`;
+      }
+    } catch (error: any) {
+      // Skip regions with access issues
+    }
+  }
+  
+  output += `## Summary\n**Total Functions:** ${totalFunctions}\n`;
+  
+  if (totalFunctions === 0) {
+    output += `\n[OK] No Lambda functions found across ${regions.length} regions.\n`;
+  }
+  
   return output;
 }
 
@@ -1361,6 +1461,82 @@ async function analyzeInfrastructureAutomation(region: string, scanMode?: string
   if (mode === "eventbridge" || mode === "both") {
     output += "## EventBridge Rules\n" + await scanEventBridgeSecurity(region) + "\n";
   }
+  return output;
+}
+
+// Multi-region EC2 enumeration
+async function enumerateEC2InstancesMultiRegion(region: string): Promise<string> {
+  const regions = resolveRegions(region);
+  
+  if (regions.length === 1) {
+    return enumerateEC2Instances(regions[0]);
+  }
+  
+  let output = `# EC2 Instances - Multi-Region Scan\n\n`;
+  output += `**Scanning ${regions.length} regions:** ${region === 'all' ? 'ALL' : region === 'common' ? 'COMMON' : region}\n\n`;
+  
+  let totalInstances = 0;
+  const allFindings: string[] = [];
+  const regionSummary: { region: string; count: number }[] = [];
+  
+  for (const r of regions) {
+    try {
+      const client = new EC2Client({ region: r });
+      const command = new DescribeInstancesCommand({});
+      const response = await client.send(command);
+      
+      let regionCount = 0;
+      
+      if (response.Reservations && response.Reservations.length > 0) {
+        output += `## Region: ${r}\n\n`;
+        
+        for (const reservation of response.Reservations) {
+          for (const instance of reservation.Instances || []) {
+            regionCount++;
+            totalInstances++;
+            
+            const instanceId = instance.InstanceId || "N/A";
+            const state = instance.State?.Name || "unknown";
+            const publicIp = instance.PublicIpAddress || "None";
+            const privateIp = instance.PrivateIpAddress || "N/A";
+            const instanceType = instance.InstanceType || "N/A";
+            const iamRole = instance.IamInstanceProfile?.Arn?.split("/").pop() || "None";
+            
+            output += `- **${instanceId}** (${state}) - ${instanceType} | Public: ${publicIp} | IAM: ${iamRole}\n`;
+            
+            if (publicIp !== "None") {
+              allFindings.push(`[CRITICAL] ${r}: Instance ${instanceId} has public IP ${publicIp}`);
+            }
+          }
+        }
+        output += `\n`;
+      }
+      
+      if (regionCount > 0) {
+        regionSummary.push({ region: r, count: regionCount });
+      }
+    } catch (error: any) {
+      // Skip regions with access issues or no opt-in
+    }
+  }
+  
+  output += `## Summary\n\n`;
+  output += `| Region | Instances |\n`;
+  output += `|--------|----------|\n`;
+  for (const rs of regionSummary) {
+    output += `| ${rs.region} | ${rs.count} |\n`;
+  }
+  output += `| **TOTAL** | **${totalInstances}** |\n\n`;
+  
+  if (allFindings.length > 0) {
+    output += `## Security Findings (${allFindings.length})\n\n`;
+    allFindings.forEach(f => output += `${f}\n`);
+  }
+  
+  if (totalInstances === 0) {
+    output += `\n[OK] No EC2 instances found across ${regions.length} regions.\n`;
+  }
+  
   return output;
 }
 
@@ -1775,6 +1951,66 @@ async function enumerateIAMRoles(): Promise<string> {
   return output;
 }
 
+// Multi-region RDS enumeration
+async function enumerateRDSDatabasesMultiRegion(region: string): Promise<string> {
+  const regions = resolveRegions(region);
+  
+  if (regions.length === 1) {
+    return enumerateRDSDatabases(regions[0]);
+  }
+  
+  let output = `# RDS Databases - Multi-Region Scan\n\n`;
+  output += `**Scanning ${regions.length} regions:** ${region === 'all' ? 'ALL' : region === 'common' ? 'COMMON' : region}\n\n`;
+  
+  let totalDBs = 0;
+  const allFindings: string[] = [];
+  
+  for (const r of regions) {
+    try {
+      const client = new RDSClient({ region: r });
+      const command = new DescribeDBInstancesCommand({});
+      const response = await client.send(command);
+      
+      if (response.DBInstances && response.DBInstances.length > 0) {
+        output += `## Region: ${r}\n\n`;
+        
+        for (const db of response.DBInstances) {
+          totalDBs++;
+          const dbId = db.DBInstanceIdentifier || "N/A";
+          const engine = db.Engine || "N/A";
+          const publicAccess = db.PubliclyAccessible ? "[CRITICAL] PUBLIC" : "[OK] Private";
+          const encrypted = db.StorageEncrypted ? "[OK] Yes" : "[FAIL] No";
+          
+          output += `- **${dbId}** (${engine}) | ${publicAccess} | Encrypted: ${encrypted}\n`;
+          
+          if (db.PubliclyAccessible) {
+            allFindings.push(`[CRITICAL] ${r}: RDS ${dbId} is publicly accessible`);
+          }
+          if (!db.StorageEncrypted) {
+            allFindings.push(`[HIGH] ${r}: RDS ${dbId} is not encrypted`);
+          }
+        }
+        output += `\n`;
+      }
+    } catch (error: any) {
+      // Skip regions with access issues
+    }
+  }
+  
+  output += `## Summary\n**Total Databases:** ${totalDBs}\n\n`;
+  
+  if (allFindings.length > 0) {
+    output += `## Security Findings (${allFindings.length})\n\n`;
+    allFindings.forEach(f => output += `${f}\n`);
+  }
+  
+  if (totalDBs === 0) {
+    output += `\n[OK] No RDS databases found across ${regions.length} regions.\n`;
+  }
+  
+  return output;
+}
+
 async function enumerateRDSDatabases(region: string): Promise<string> {
   const client = new RDSClient({ region });
   
@@ -2185,6 +2421,58 @@ async function scanSecretsManager(region: string): Promise<string> {
     findings.forEach(f => output += `${f}\n`);
   }
 
+  return output;
+}
+
+// Multi-region Public Resources enumeration
+async function enumeratePublicResourcesMultiRegion(region: string): Promise<string> {
+  const regions = resolveRegions(region);
+  
+  if (regions.length === 1) {
+    return enumeratePublicResources(regions[0]);
+  }
+  
+  let output = `# Public Resources - Multi-Region Attack Surface\n\n`;
+  output += `**Scanning ${regions.length} regions:** ${region === 'all' ? 'ALL' : region === 'common' ? 'COMMON' : region}\n\n`;
+  
+  let totalPublic = 0;
+  const allFindings: string[] = [];
+  
+  for (const r of regions) {
+    try {
+      const regionResult = await enumeratePublicResources(r);
+      
+      // Extract public resource count from result
+      const ec2Match = regionResult.match(/Public EC2 Instances: (\d+)/);
+      const rdsMatch = regionResult.match(/Public RDS Instances: (\d+)/);
+      
+      const ec2Count = ec2Match ? parseInt(ec2Match[1]) : 0;
+      const rdsCount = rdsMatch ? parseInt(rdsMatch[1]) : 0;
+      
+      if (ec2Count > 0 || rdsCount > 0) {
+        output += `## Region: ${r}\n\n`;
+        output += regionResult.replace(/# Public Resources.*\n\n/g, '');
+        output += `\n---\n\n`;
+        totalPublic += ec2Count + rdsCount;
+        
+        if (ec2Count > 0) allFindings.push(`[CRITICAL] ${r}: ${ec2Count} public EC2 instances`);
+        if (rdsCount > 0) allFindings.push(`[CRITICAL] ${r}: ${rdsCount} public RDS instances`);
+      }
+    } catch (error: any) {
+      // Skip regions with access issues
+    }
+  }
+  
+  output += `## Summary\n\n`;
+  output += `**Total Public Resources:** ${totalPublic}\n\n`;
+  
+  if (allFindings.length > 0) {
+    output += `## Critical Findings\n\n`;
+    allFindings.forEach(f => output += `${f}\n`);
+  } else {
+    output += `[OK] No publicly accessible resources found across ${regions.length} regions.\n`;
+  }
+  
   return output;
 }
 
