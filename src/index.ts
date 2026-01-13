@@ -10,7 +10,7 @@ import {
 
 // AWS SDK imports - Phase 1
 import { EC2Client, DescribeInstancesCommand, DescribeSecurityGroupsCommand, DescribeVpcsCommand, DescribeSubnetsCommand } from "@aws-sdk/client-ec2";
-import { S3Client, ListBucketsCommand, GetBucketPolicyCommand, GetBucketEncryptionCommand, GetPublicAccessBlockCommand, GetBucketAclCommand, GetBucketVersioningCommand, GetBucketLoggingCommand, GetBucketPolicyStatusCommand } from "@aws-sdk/client-s3";
+import { S3Client, ListBucketsCommand, GetBucketPolicyCommand, GetBucketEncryptionCommand, GetPublicAccessBlockCommand, GetBucketAclCommand, GetBucketVersioningCommand, GetBucketLoggingCommand, GetBucketPolicyStatusCommand, GetBucketLocationCommand } from "@aws-sdk/client-s3";
 import { IAMClient, ListUsersCommand, ListRolesCommand, ListPoliciesCommand, GetPolicyVersionCommand, ListAttachedUserPoliciesCommand, ListAttachedRolePoliciesCommand, ListUserPoliciesCommand, GetUserPolicyCommand, ListRolePoliciesCommand, GetRolePolicyCommand, GetRoleCommand } from "@aws-sdk/client-iam";
 import { RDSClient, DescribeDBInstancesCommand, DescribeDBClustersCommand } from "@aws-sdk/client-rds";
 import { STSClient, GetCallerIdentityCommand } from "@aws-sdk/client-sts";
@@ -1446,15 +1446,31 @@ async function enumerateS3Buckets(): Promise<string> {
 
 // ========== SECURITY ANALYSIS IMPLEMENTATIONS ==========
 
+// Helper function to get bucket region
+async function getBucketRegion(bucketName: string): Promise<string> {
+  try {
+    const command = new GetBucketLocationCommand({ Bucket: bucketName });
+    const response = await s3Client.send(command);
+    // LocationConstraint is null for us-east-1, otherwise contains region name
+    return response.LocationConstraint || "us-east-1";
+  } catch (error) {
+    return DEFAULT_REGION;
+  }
+}
+
 async function scanS3BucketSecurity(bucketName: string): Promise<string> {
   try {
     const findings: string[] = [];
+    
+    // Auto-detect bucket region to avoid PermanentRedirect errors
+    const bucketRegion = await getBucketRegion(bucketName);
+    const regionalS3Client = new S3Client({ region: bucketRegion });
 
     // 1. Check public access block
-    let section1 = "";
+    let section1 = `## 0. Bucket Region\n- Region: ${bucketRegion}\n\n`;
     try {
       const publicAccessCommand = new GetPublicAccessBlockCommand({ Bucket: bucketName });
-      const publicAccess = await s3Client.send(publicAccessCommand);
+      const publicAccess = await regionalS3Client.send(publicAccessCommand);
       
       const blockConfig = publicAccess.PublicAccessBlockConfiguration;
       section1 += `## 1. Public Access Block Configuration\n`;
@@ -1479,7 +1495,7 @@ async function scanS3BucketSecurity(bucketName: string): Promise<string> {
     let section2 = "";
     try {
       const policyCommand = new GetBucketPolicyCommand({ Bucket: bucketName });
-      const policyResponse = await s3Client.send(policyCommand);
+      const policyResponse = await regionalS3Client.send(policyCommand);
       
       section2 += `## 2. Bucket Policy\n`;
       
@@ -1533,7 +1549,7 @@ async function scanS3BucketSecurity(bucketName: string): Promise<string> {
   // 3. Check bucket ACLs
   try {
     const aclCommand = new GetBucketAclCommand({ Bucket: bucketName });
-    const aclResponse = await s3Client.send(aclCommand);
+    const aclResponse = await regionalS3Client.send(aclCommand);
     
     output += `## 3. Access Control List (ACL)\n`;
     
@@ -1577,7 +1593,7 @@ async function scanS3BucketSecurity(bucketName: string): Promise<string> {
   // 4. Check if bucket policy is public
   try {
     const policyStatusCommand = new GetBucketPolicyStatusCommand({ Bucket: bucketName });
-    const policyStatus = await s3Client.send(policyStatusCommand);
+    const policyStatus = await regionalS3Client.send(policyStatusCommand);
     
     if (policyStatus.PolicyStatus?.IsPublic) {
       findings.push("[CRITICAL] CRITICAL: AWS confirms bucket policy is PUBLIC");
@@ -1592,7 +1608,7 @@ async function scanS3BucketSecurity(bucketName: string): Promise<string> {
   // 5. Check encryption
   try {
     const encryptionCommand = new GetBucketEncryptionCommand({ Bucket: bucketName });
-    const encryption = await s3Client.send(encryptionCommand);
+    const encryption = await regionalS3Client.send(encryptionCommand);
     const algorithm = encryption.ServerSideEncryptionConfiguration?.Rules?.[0]?.ApplyServerSideEncryptionByDefault?.SSEAlgorithm;
     const kmsKeyId = encryption.ServerSideEncryptionConfiguration?.Rules?.[0]?.ApplyServerSideEncryptionByDefault?.KMSMasterKeyID;
     
@@ -1615,7 +1631,7 @@ async function scanS3BucketSecurity(bucketName: string): Promise<string> {
   // 6. Check versioning
   try {
     const versioningCommand = new GetBucketVersioningCommand({ Bucket: bucketName });
-    const versioning = await s3Client.send(versioningCommand);
+    const versioning = await regionalS3Client.send(versioningCommand);
     
     output += `## 6. Versioning\n`;
     const status = versioning.Status || "Disabled";
@@ -1635,7 +1651,7 @@ async function scanS3BucketSecurity(bucketName: string): Promise<string> {
   // 7. Check logging
   try {
     const loggingCommand = new GetBucketLoggingCommand({ Bucket: bucketName });
-    const logging = await s3Client.send(loggingCommand);
+    const logging = await regionalS3Client.send(loggingCommand);
     
     output += `## 7. Access Logging\n`;
     if (logging.LoggingEnabled) {
