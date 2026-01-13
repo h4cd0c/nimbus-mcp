@@ -338,14 +338,14 @@ export function parseAWSError(error: any, service: string = 'AWS'): ApiError {
  * Format error for user-friendly output
  */
 export function formatError(error: ApiError): string {
-  let message = `❌ ${error.service} Error: ${error.message}`;
+  let message = `[FAIL] ${error.service} Error: ${error.message}`;
   
   if (error.code !== 'UnknownError') {
     message += ` (${error.code})`;
   }
   
   if (error.retryable) {
-    message += '\n💡 This error is retryable - the operation was automatically retried.';
+    message += '\n[TIP] This error is retryable - the operation was automatically retried.';
   }
   
   return message;

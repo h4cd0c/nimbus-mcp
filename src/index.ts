@@ -1052,9 +1052,9 @@ function getCacheStats(): string {
   }
   
   output += `\n## Cache Benefits\n\n`;
-  output += `- ⚡ **Speed:** Repeated scans return instantly from cache\n`;
-  output += `-  **Rate Limits:** Reduces AWS API calls, avoids throttling\n`;
-  output += `- 💾 **TTL:** Cache auto-expires (5 min default)\n\n`;
+  output += `- **Speed:** Repeated scans return instantly from cache\n`;
+  output += `- **Rate Limits:** Reduces AWS API calls, avoids throttling\n`;
+  output += `- **TTL:** Cache auto-expires (5 min default)\n\n`;
   output += `## Commands\n\n`;
   output += `- \`cache_stats\` - View this report\n`;
   output += `- \`cache_clear\` - Clear all cache\n`;
@@ -1203,13 +1203,13 @@ function getHelpText(): string {
 **26. help** - This help text
 - Usage: \`#mcp_nimbus_help\`
 
-**27. generate_tra_report** - Comprehensive TRA report ⭐ NEW
+**27. generate_tra_report** - Comprehensive TRA report [NEW]
 - Usage: \`#mcp_nimbus_generate_tra_report region: us-east-1\`
 - Features: Risk scoring, compliance mapping (CIS/NIST/PCI), MITRE ATT&CK, remediation roadmap
 - Frameworks: \`framework: cis\` or \`nist\` or \`pci\` or \`all\`
 - Formats: \`format: pdf outputFile: C:\\\\reports\\\\tra-report.pdf\`
 
-## 🚀 Quick Start Workflow
+## Quick Start Workflow
 
 \`\`\`bash
 # 1. Identify your AWS identity
@@ -1228,12 +1228,12 @@ function getHelpText(): string {
 #mcp_nimbus_generate_security_report region: us-east-1 format: pdf outputFile: C:\\\\reports\\\\aws-report.pdf
 \`\`\`
 
-## 📚 Documentation
+## Documentation
 - **README.md** - Complete feature overview
 - **USAGE.md** - Detailed pentesting workflows
 - **Built-in examples** - Each tool returns actionable findings
 
-## 🔍 Common Findings
+## Common Findings
 - [CRITICAL] CRITICAL: Public EC2 instances, open management ports, wildcard IAM
 - [HIGH] HIGH: Unencrypted S3/RDS, old access keys, Lambda secrets in env vars
 - [MEDIUM] MEDIUM: No KMS rotation, insufficient backups, EKS without logging
@@ -1439,7 +1439,7 @@ async function enumerateS3Buckets(): Promise<string> {
     output += `- **${bucket.Name}** (Created: ${bucket.CreationDate?.toISOString()})\n`;
   }
 
-  output += `\n💡 Use scan_s3_bucket_security to analyze individual bucket security\n`;
+  output += `\n[TIP] Use scan_s3_bucket_security to analyze individual bucket security\n`;
 
   return output;
 }
@@ -2111,7 +2111,7 @@ async function checkKMSKeys(region: string): Promise<string> {
       output += `- **Created:** ${keyMetadata.CreationDate?.toISOString()}\n`;
 
       // Note: Key rotation status requires separate GetKeyRotationStatus API call
-      output += `💡 Use GetKeyRotationStatus API to check rotation\n`;
+      output += `[TIP] Use GetKeyRotationStatus API to check rotation\n`;
 
       output += `\n`;
     } catch (error) {
@@ -2209,7 +2209,7 @@ async function enumeratePublicResources(region: string): Promise<string> {
   output += `## Public RDS Instances: ${publicRDSCount}\n\n`;
 
   // Find public S3 buckets (already implemented in scan_s3_bucket_security)
-  output += `## Public S3 Buckets\n💡 Use scan_s3_bucket_security to check individual bucket public access\n\n`;
+  output += `## Public S3 Buckets\n[TIP] Use scan_s3_bucket_security to check individual bucket public access\n\n`;
 
   output += `## Total Public Resources Found: ${publicEC2Count + publicRDSCount}\n\n`;
 
@@ -2270,7 +2270,7 @@ async function analyzeAttackPaths(region: string): Promise<string> {
     output += `[OK] No obvious attack paths detected\n`;
   }
 
-  output += `\n💡 Manual review recommended: Check IAM role permissions, Lambda environment variables, EC2 security groups\n`;
+  output += `\n[TIP] Manual review recommended: Check IAM role permissions, Lambda environment variables, EC2 security groups\n`;
 
   return output;
 }
@@ -2350,7 +2350,7 @@ async function generateSecurityReport(region: string, format: string = "markdown
       lowCount, 
       findings 
     });
-    return `[OK] PDF report generated: ${outputFile}\n\n📄 Total findings: ${criticalCount + highCount + mediumCount + lowCount}\n[CRITICAL] Critical: ${criticalCount}\n[HIGH] High: ${highCount}`;
+    return `[OK] PDF report generated: ${outputFile}\n\nTotal findings: ${criticalCount + highCount + mediumCount + lowCount}\n[CRITICAL] Critical: ${criticalCount}\n[HIGH] High: ${highCount}`;
   } else if (format === "html" && outputFile) {
     await generateHTMLReport(report, outputFile);
     return `[OK] HTML report generated: ${outputFile}\n\n${report}`;
@@ -2957,7 +2957,7 @@ async function getGuardDutyFindings(region: string, severityFilter?: string): Pr
   } catch (error: any) {
     output += `\n[FAIL] Error: ${error.message}\n`;
     if (error.message.includes("not subscribed")) {
-      output += "\n💡 TIP: Enable GuardDuty in AWS Console to detect threats automatically.\n";
+      output += "\n[TIP] Enable GuardDuty in AWS Console to detect threats automatically.\n";
     }
   }
   
@@ -3645,7 +3645,7 @@ async function generateTRAReport(
             .replace(/[\u{1F300}-\u{1F9FF}]/gu, '') // Unicode emoji block
             .replace(/[\u{2600}-\u{27BF}]/gu, '') // Emoticons
             .replace(/[\u{2B50}]/gu, '') // Special symbols
-            .replace(/[[CRITICAL][HIGH][MEDIUM][LOW][OK][FAIL][WARN]💡]/g, '') // Explicit emoji
+            .replace(/\[CRITICAL\]|\[HIGH\]|\[MEDIUM\]|\[LOW\]|\[OK\]|\[FAIL\]|\[WARN\]|\[TIP\]/g, '') // Text labels
             .replace(/^\s+/, '') // Remove leading whitespace
             .trim();
         })
@@ -5889,7 +5889,7 @@ async function scanRegionForVPC(region: string): Promise<RegionResult> {
       
       // Check for flow logs
       // Note: Would need additional API call to fully check
-      findings.push(`🔵 ${vpcName}: ${vpc.CidrBlock}`);
+      findings.push(`[INFO] ${vpcName}: ${vpc.CidrBlock}`);
     }
     
     return { region, resourceCount: response.Vpcs?.length || 0, findings };
