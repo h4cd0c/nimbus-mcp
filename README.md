@@ -142,9 +142,9 @@ For VS Code: Add to .vscode/mcp.json
 ```json
 {
   "servers": {
-    "azure-pentest": {
+    "nimbus": {
       "command": "node",
-      "args": ["C:\\Users\\admin\\Desktop\\mcp\\azure-pentest\\dist\\index.js"],
+      "args": ["C:\\path\\to\\nimbus-mcp\\dist\\index.js"],
       "type": "stdio"
     }
   }
@@ -157,19 +157,19 @@ For VS Code: Add to .vscode/mcp.json
 
 ```bash
 # 🔑 Identify current AWS identity
-#mcp_aws-pentest_whoami
+#mcp_nimbus_whoami
 
 # 🌐 Find public-facing resources (attack surface)
-#mcp_aws-pentest_enumerate_public_resources region: us-east-1
+#mcp_nimbus_enumerate_public_resources region: us-east-1
 
 # 🔒 Analyze Security Groups for dangerous rules
-#mcp_aws-pentest_analyze_security_groups region: us-east-1
+#mcp_nimbus_analyze_security_groups region: us-east-1
 
 # 🪣 Deep scan S3 bucket security (7 checks)
-#mcp_aws-pentest_scan_s3_bucket_security bucketName: my-production-bucket
+#mcp_nimbus_scan_s3_bucket_security bucketName: my-production-bucket
 
 # 📊 Generate executive TRA report (PDF)
-#mcp_aws-pentest_generate_security_report region: us-east-1 format: pdf outputFile: C:\reports\aws-security-2025.pdf
+#mcp_nimbus_generate_security_report region: us-east-1 format: pdf outputFile: C:\reports\aws-security-2025.pdf
 ```
 
 ## 📋 Complete Tool Reference
@@ -179,7 +179,7 @@ For VS Code: Add to .vscode/mcp.json
 
 | Tool | Description | Example |
 |------|-------------|---------|
-| `whoami` | Identify current AWS identity (user/role, account ID, ARN) | `#mcp_aws-pentest_whoami` |
+| `whoami` | Identify current AWS identity (user/role, account ID, ARN) | `#mcp_nimbus_whoami` |
 | `enumerate_ec2_instances` | List EC2 instances with public IPs and security groups | `region: us-east-1` |
 | `enumerate_s3_buckets` | List all S3 buckets in the account | No parameters |
 | `enumerate_iam_users` | List IAM users with access key ages and last used dates | No parameters |
@@ -397,7 +397,7 @@ Compliance: 60-75% (Typical first scan)
 | **USAGE.md** | Detailed workflows, examples, best practices | 400+ | [View](USAGE.md) |
 | **TRA_TOOL.md** | Complete TRA guide with compliance frameworks | 471 | [View](TRA_TOOL.md) |
 | **COMPLETE.md** | Phase completion summary, achievements | 200+ | [View](COMPLETE.md) |
-| **Built-in Help** | Interactive command reference | - | `#mcp_aws-pentest_help` |
+| **Built-in Help** | Interactive command reference | - | `#mcp_nimbus_help` |
 
 ## 🛡️ Security & Compliance
 
@@ -488,16 +488,16 @@ This tool helps assess compliance with:
 
 ```bash
 # Step 1: Verify access
-#mcp_aws-pentest_whoami
+#mcp_nimbus_whoami
 
 # Step 2: Map attack surface
-#mcp_aws-pentest_enumerate_public_resources region: us-east-1
+#mcp_nimbus_enumerate_public_resources region: us-east-1
 
 # Step 3: Check network security
-#mcp_aws-pentest_analyze_security_groups region: us-east-1
+#mcp_nimbus_analyze_security_groups region: us-east-1
 
 # Step 4: Generate executive report
-#mcp_aws-pentest_generate_security_report region: us-east-1 format: pdf outputFile: C:\reports\quick-scan.pdf
+#mcp_nimbus_generate_security_report region: us-east-1 format: pdf outputFile: C:\reports\quick-scan.pdf
 ```
 
 **Expected Output:** 10-20 findings, risk score, top 5 priorities
@@ -510,16 +510,16 @@ This tool helps assess compliance with:
 
 ```bash
 # Step 1: Enumerate all users
-#mcp_aws-pentest_enumerate_iam_users
+#mcp_nimbus_enumerate_iam_users
 
 # Step 2: Enumerate all roles
-#mcp_aws-pentest_enumerate_iam_roles
+#mcp_nimbus_enumerate_iam_roles
 
 # Step 3: Check for wildcard permissions
-#mcp_aws-pentest_check_iam_policies
+#mcp_nimbus_check_iam_policies
 
 # Step 4: Identify attack paths
-#mcp_aws-pentest_analyze_attack_paths region: us-east-1
+#mcp_nimbus_analyze_attack_paths region: us-east-1
 ```
 
 **Expected Output:** Wildcard policies, old access keys, privilege escalation chains
@@ -532,19 +532,19 @@ This tool helps assess compliance with:
 
 ```bash
 # Step 1: List all S3 buckets
-#mcp_aws-pentest_enumerate_s3_buckets
+#mcp_nimbus_enumerate_s3_buckets
 
 # Step 2: Deep scan critical buckets
-#mcp_aws-pentest_scan_s3_bucket_security bucketName: production-data
+#mcp_nimbus_scan_s3_bucket_security bucketName: production-data
 
 # Step 3: Check RDS encryption
-#mcp_aws-pentest_enumerate_rds_databases region: us-east-1
+#mcp_nimbus_enumerate_rds_databases region: us-east-1
 
 # Step 4: Check DynamoDB security
-#mcp_aws-pentest_scan_dynamodb_security region: us-east-1
+#mcp_nimbus_scan_dynamodb_security region: us-east-1
 
 # Step 5: Verify secrets rotation
-#mcp_aws-pentest_scan_secrets_manager region: us-east-1
+#mcp_nimbus_scan_secrets_manager region: us-east-1
 ```
 
 **Expected Output:** Unencrypted buckets, public databases, unrotated secrets
@@ -557,7 +557,7 @@ This tool helps assess compliance with:
 
 ```bash
 # Single command for comprehensive assessment
-#mcp_aws-pentest_generate_security_report region: us-east-1 format: pdf outputFile: C:\reports\TRA-Report-2025-Q4.pdf fullScan: true includeCompliance: true includeRemediation: true
+#mcp_nimbus_generate_security_report region: us-east-1 format: pdf outputFile: C:\reports\TRA-Report-2025-Q4.pdf fullScan: true includeCompliance: true includeRemediation: true
 ```
 
 **Report Includes:**
@@ -691,3 +691,4 @@ If this tool helps your security assessments, please:
 Made with ❤️ for the security community
 
 </div>
+

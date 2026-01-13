@@ -6,19 +6,19 @@
 
 Get comprehensive help with all 27 tools:
 ```bash
-#mcp_aws-pentest_help
+#mcp_nimbus_help
 ```
 
 For TRA (Threat & Risk Assessment) reporting:
 ```bash
-#mcp_aws-pentest_generate_tra_report region: us-east-1
+#mcp_nimbus_generate_tra_report region: us-east-1
 ```
 
 ## Installation
 
 ```powershell
 # Clone or download the repository
-cd aws-pentest
+cd nimbus-mcp
 
 # Install dependencies
 npm install
@@ -36,9 +36,9 @@ Add to your MCP settings file:
 ```json
 {
   "mcpServers": {
-    "aws-pentest": {
+    "nimbus-mcp": {
       "command": "node",
-      "args": ["C:\\path\\to\\aws-pentest\\dist\\index.js"],
+      "args": ["C:\\path\\to\\nimbus-mcp\\dist\\index.js"],
       "disabled": false,
       "alwaysAllow": []
     }
@@ -75,69 +75,69 @@ aws sts get-caller-identity
 
 ### Phase 1: Reconnaissance
 ```bash
-#mcp_aws-pentest_whoami
-#mcp_aws-pentest_enumerate_public_resources region: us-east-1
-#mcp_aws-pentest_enumerate_ec2_instances region: us-east-1
+#mcp_nimbus_whoami
+#mcp_nimbus_enumerate_public_resources region: us-east-1
+#mcp_nimbus_enumerate_ec2_instances region: us-east-1
 ```
 
 ### Phase 2: Enumeration
 ```bash
-#mcp_aws-pentest_enumerate_s3_buckets
-#mcp_aws-pentest_enumerate_iam_users
-#mcp_aws-pentest_enumerate_iam_roles
-#mcp_aws-pentest_enumerate_rds_databases region: us-east-1
+#mcp_nimbus_enumerate_s3_buckets
+#mcp_nimbus_enumerate_iam_users
+#mcp_nimbus_enumerate_iam_roles
+#mcp_nimbus_enumerate_rds_databases region: us-east-1
 ```
 
 ### Phase 3: Security Scanning
 ```bash
-#mcp_aws-pentest_analyze_security_groups region: us-east-1
-#mcp_aws-pentest_check_iam_policies
-#mcp_aws-pentest_scan_s3_bucket_security bucketName: my-bucket
-#mcp_aws-pentest_scan_secrets_manager region: us-east-1
-#mcp_aws-pentest_scan_dynamodb_security region: us-east-1
-#mcp_aws-pentest_scan_api_gateway_security region: us-east-1
-#mcp_aws-pentest_scan_cloudfront_security
-#mcp_aws-pentest_scan_elasticache_security region: us-east-1
-#mcp_aws-pentest_get_guardduty_findings region: us-east-1
-#mcp_aws-pentest_scan_sns_security region: us-east-1
-#mcp_aws-pentest_scan_sqs_security region: us-east-1
-#mcp_aws-pentest_scan_cognito_security region: us-east-1
+#mcp_nimbus_analyze_security_groups region: us-east-1
+#mcp_nimbus_check_iam_policies
+#mcp_nimbus_scan_s3_bucket_security bucketName: my-bucket
+#mcp_nimbus_scan_secrets_manager region: us-east-1
+#mcp_nimbus_scan_dynamodb_security region: us-east-1
+#mcp_nimbus_scan_api_gateway_security region: us-east-1
+#mcp_nimbus_scan_cloudfront_security
+#mcp_nimbus_scan_elasticache_security region: us-east-1
+#mcp_nimbus_get_guardduty_findings region: us-east-1
+#mcp_nimbus_scan_sns_security region: us-east-1
+#mcp_nimbus_scan_sqs_security region: us-east-1
+#mcp_nimbus_scan_cognito_security region: us-east-1
 ```
 
 ### Phase 4: Attack Path Analysis
 ```bash
-#mcp_aws-pentest_analyze_attack_paths region: us-east-1
+#mcp_nimbus_analyze_attack_paths region: us-east-1
 ```
 
 ### Phase 5: Generate Report
 ```bash
 # Standard security report
-#mcp_aws-pentest_generate_security_report region: us-east-1 format: pdf outputFile: C:\reports\aws-security.pdf
+#mcp_nimbus_generate_security_report region: us-east-1 format: pdf outputFile: C:\reports\aws-security.pdf
 
 # TRA report (NEW - recommended for compliance audits)
-#mcp_aws-pentest_generate_tra_report region: us-east-1 format: pdf outputFile: C:\reports\TRA-Report.pdf
+#mcp_nimbus_generate_tra_report region: us-east-1 format: pdf outputFile: C:\reports\TRA-Report.pdf
 ```
 
 ## TRA (Threat & Risk Assessment) Workflow ⭐ NEW
 
 ### Quick TRA Report
 ```bash
-#mcp_aws-pentest_generate_tra_report region: us-east-1
+#mcp_nimbus_generate_tra_report region: us-east-1
 ```
 
 ### Compliance-Specific Reports
 ```bash
 # CIS AWS Foundations Benchmark
-#mcp_aws-pentest_generate_tra_report region: us-east-1 framework: cis format: pdf outputFile: C:\reports\CIS-Audit.pdf
+#mcp_nimbus_generate_tra_report region: us-east-1 framework: cis format: pdf outputFile: C:\reports\CIS-Audit.pdf
 
 # NIST 800-53
-#mcp_aws-pentest_generate_tra_report region: us-east-1 framework: nist format: pdf outputFile: C:\reports\NIST-Audit.pdf
+#mcp_nimbus_generate_tra_report region: us-east-1 framework: nist format: pdf outputFile: C:\reports\NIST-Audit.pdf
 
 # PCI-DSS
-#mcp_aws-pentest_generate_tra_report region: us-east-1 framework: pci format: pdf outputFile: C:\reports\PCI-Audit.pdf
+#mcp_nimbus_generate_tra_report region: us-east-1 framework: pci format: pdf outputFile: C:\reports\PCI-Audit.pdf
 
 # All frameworks
-#mcp_aws-pentest_generate_tra_report region: us-east-1 framework: all format: html outputFile: C:\reports\TRA-Full.html
+#mcp_nimbus_generate_tra_report region: us-east-1 framework: all format: html outputFile: C:\reports\TRA-Full.html
 ```
 
 **What TRA Report Includes:**
@@ -279,3 +279,4 @@ Use `aws ec2 describe-regions` to list all available regions
 
 ---
 **Version:** 1.0.0 | **Total Tools:** 26 | **Last Updated:** December 2025
+

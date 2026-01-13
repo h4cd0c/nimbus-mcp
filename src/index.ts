@@ -1095,116 +1095,116 @@ function getHelpText(): string {
 ### Enumeration Tools (10)
 
 **1. whoami** - Identify current AWS identity
-- Usage: \`#mcp_aws-pentest_whoami\`
+- Usage: \`#mcp_nimbus_whoami\`
 - Returns: IAM user/role, account ID, ARN
 
 **2. enumerate_ec2_instances** - List EC2 instances
-- Usage: \`#mcp_aws-pentest_enumerate_ec2_instances region: us-east-1\`
+- Usage: \`#mcp_nimbus_enumerate_ec2_instances region: us-east-1\`
 - Returns: Instance IDs, public IPs, security groups, IAM roles
 
 **3. enumerate_s3_buckets** - List all S3 buckets
-- Usage: \`#mcp_aws-pentest_enumerate_s3_buckets\`
+- Usage: \`#mcp_nimbus_enumerate_s3_buckets\`
 - Returns: Bucket names and creation dates
 
 **4. enumerate_iam_users** - List IAM users
-- Usage: \`#mcp_aws-pentest_enumerate_iam_users\`
+- Usage: \`#mcp_nimbus_enumerate_iam_users\`
 - Returns: Users with access key age, password last used
 
 **5. enumerate_iam_roles** - List IAM roles
-- Usage: \`#mcp_aws-pentest_enumerate_iam_roles\`
+- Usage: \`#mcp_nimbus_enumerate_iam_roles\`
 - Returns: Roles with trust policies
 
 **6. enumerate_rds_databases** - List RDS instances
-- Usage: \`#mcp_aws-pentest_enumerate_rds_databases region: us-east-1\`
+- Usage: \`#mcp_nimbus_enumerate_rds_databases region: us-east-1\`
 - Returns: DB instances, encryption, public access status
 
 **7. enumerate_vpcs** - List VPCs
-- Usage: \`#mcp_aws-pentest_enumerate_vpcs region: us-east-1\`
+- Usage: \`#mcp_nimbus_enumerate_vpcs region: us-east-1\`
 - Returns: VPCs with subnets and CIDR blocks
 
 **8. enumerate_lambda_functions** - List Lambda functions
-- Usage: \`#mcp_aws-pentest_enumerate_lambda_functions region: us-east-1\`
+- Usage: \`#mcp_nimbus_enumerate_lambda_functions region: us-east-1\`
 - Returns: Functions with runtimes, IAM roles, env vars
 
 **9. enumerate_eks_clusters** - List EKS clusters
-- Usage: \`#mcp_aws-pentest_enumerate_eks_clusters region: us-east-1\`
+- Usage: \`#mcp_nimbus_enumerate_eks_clusters region: us-east-1\`
 - Returns: Clusters with public endpoint status
 
 **10. enumerate_public_resources** - Map attack surface
-- Usage: \`#mcp_aws-pentest_enumerate_public_resources region: us-east-1\`
+- Usage: \`#mcp_nimbus_enumerate_public_resources region: us-east-1\`
 - Returns: All publicly accessible resources
 
 ### Security Scanning Tools (10)
 
 **11. scan_s3_bucket_security** - Deep S3 analysis
-- Usage: \`#mcp_aws-pentest_scan_s3_bucket_security bucketName: my-bucket\`
+- Usage: \`#mcp_nimbus_scan_s3_bucket_security bucketName: my-bucket\`
 - Checks: Public access, encryption, bucket policies, ACLs, versioning, logging
 
 **12. analyze_security_groups** - Find dangerous SG rules
-- Usage: \`#mcp_aws-pentest_analyze_security_groups region: us-east-1\`
+- Usage: \`#mcp_nimbus_analyze_security_groups region: us-east-1\`
 - Detects: Open ports, 0.0.0.0/0 access, SSH/RDP exposure
 
 **13. check_iam_policies** - Detect privilege escalation
-- Usage: \`#mcp_aws-pentest_check_iam_policies\`
+- Usage: \`#mcp_nimbus_check_iam_policies\`
 - Finds: Wildcard permissions, IAM modify rights
 
 **14. check_kms_keys** - Analyze KMS configuration
-- Usage: \`#mcp_aws-pentest_check_kms_keys region: us-east-1\`
+- Usage: \`#mcp_nimbus_check_kms_keys region: us-east-1\`
 - Checks: Key state, rotation status
 
 **15. scan_secrets_manager** - Check secrets security
-- Usage: \`#mcp_aws-pentest_scan_secrets_manager region: us-east-1\`
+- Usage: \`#mcp_nimbus_scan_secrets_manager region: us-east-1\`
 - Checks: Rotation enabled, last change date
 
 **16. scan_dynamodb_security** - DynamoDB security
-- Usage: \`#mcp_aws-pentest_scan_dynamodb_security region: us-east-1\`
+- Usage: \`#mcp_nimbus_scan_dynamodb_security region: us-east-1\`
 - Checks: Encryption at rest, point-in-time recovery, backups
 
 **17. scan_api_gateway_security** - API Gateway security
-- Usage: \`#mcp_aws-pentest_scan_api_gateway_security region: us-east-1\`
+- Usage: \`#mcp_nimbus_scan_api_gateway_security region: us-east-1\`
 - Checks: Authorization, throttling, logging, SSL certificates
 
 **18. scan_cloudfront_security** - CloudFront security
-- Usage: \`#mcp_aws-pentest_scan_cloudfront_security\`
+- Usage: \`#mcp_nimbus_scan_cloudfront_security\`
 - Checks: SSL/TLS versions, origin access, geo-restrictions, WAF
 
 **19. scan_elasticache_security** - ElastiCache security
-- Usage: \`#mcp_aws-pentest_scan_elasticache_security region: us-east-1\`
+- Usage: \`#mcp_nimbus_scan_elasticache_security region: us-east-1\`
 - Checks: Encryption in transit/at rest, auth tokens, security groups
 
 **20. get_guardduty_findings** - GuardDuty threats
-- Usage: \`#mcp_aws-pentest_get_guardduty_findings region: us-east-1\`
+- Usage: \`#mcp_nimbus_get_guardduty_findings region: us-east-1\`
 - Returns: AWS-detected threats with severity ratings
 - Optional: \`severity: CRITICAL\` to filter findings
 
 **21. scan_sns_security** - SNS topic security
-- Usage: \`#mcp_aws-pentest_scan_sns_security region: us-east-1\`
+- Usage: \`#mcp_nimbus_scan_sns_security region: us-east-1\`
 - Checks: Encryption (KMS), access policies, subscriptions, cross-account access
 
 **22. scan_sqs_security** - SQS queue security
-- Usage: \`#mcp_aws-pentest_scan_sqs_security region: us-east-1\`
+- Usage: \`#mcp_nimbus_scan_sqs_security region: us-east-1\`
 - Checks: Encryption (KMS), access policies, dead letter queues, message retention
 
 **23. scan_cognito_security** - Cognito identity & user pools
-- Usage: \`#mcp_aws-pentest_scan_cognito_security region: us-east-1\`
+- Usage: \`#mcp_nimbus_scan_cognito_security region: us-east-1\`
 - Checks: Unauthenticated access, MFA configuration, password policies, email verification
 
 ### Attack Analysis Tools (2)
 
 **24. analyze_attack_paths** - Identify attack chains
-- Usage: \`#mcp_aws-pentest_analyze_attack_paths region: us-east-1\`
+- Usage: \`#mcp_nimbus_analyze_attack_paths region: us-east-1\`
 - Finds: EC2→IAM role chains, Lambda privilege escalation
 
 **25. generate_security_report** - Comprehensive report
-- Usage: \`#mcp_aws-pentest_generate_security_report region: us-east-1\`
+- Usage: \`#mcp_nimbus_generate_security_report region: us-east-1\`
 - Formats: markdown (default), pdf, html, csv
 - Example: \`format: pdf outputFile: C:\\\\reports\\\\aws-security.pdf\`
 
 **26. help** - This help text
-- Usage: \`#mcp_aws-pentest_help\`
+- Usage: \`#mcp_nimbus_help\`
 
 **27. generate_tra_report** - Comprehensive TRA report ⭐ NEW
-- Usage: \`#mcp_aws-pentest_generate_tra_report region: us-east-1\`
+- Usage: \`#mcp_nimbus_generate_tra_report region: us-east-1\`
 - Features: Risk scoring, compliance mapping (CIS/NIST/PCI), MITRE ATT&CK, remediation roadmap
 - Frameworks: \`framework: cis\` or \`nist\` or \`pci\` or \`all\`
 - Formats: \`format: pdf outputFile: C:\\\\reports\\\\tra-report.pdf\`
@@ -1213,19 +1213,19 @@ function getHelpText(): string {
 
 \`\`\`bash
 # 1. Identify your AWS identity
-#mcp_aws-pentest_whoami
+#mcp_nimbus_whoami
 
 # 2. Find public attack surface
-#mcp_aws-pentest_enumerate_public_resources region: us-east-1
+#mcp_nimbus_enumerate_public_resources region: us-east-1
 
 # 3. Analyze Security Groups
-#mcp_aws-pentest_analyze_security_groups region: us-east-1
+#mcp_nimbus_analyze_security_groups region: us-east-1
 
 # 4. Check IAM for privilege escalation
-#mcp_aws-pentest_check_iam_policies
+#mcp_nimbus_check_iam_policies
 
 # 5. Generate comprehensive report
-#mcp_aws-pentest_generate_security_report region: us-east-1 format: pdf outputFile: C:\\\\reports\\\\aws-report.pdf
+#mcp_nimbus_generate_security_report region: us-east-1 format: pdf outputFile: C:\\\\reports\\\\aws-report.pdf
 \`\`\`
 
 ## 📚 Documentation
@@ -6188,4 +6188,5 @@ main().catch((error) => {
   console.error("Fatal error:", error);
   process.exit(1);
 });
+
 
