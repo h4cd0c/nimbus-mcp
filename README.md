@@ -3,7 +3,7 @@
 # Nimbus - AWS Security Assessment MCP Server
 
 [![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)](https://github.com/jaikumar3/nimbus-mcp)
-[![Tools](https://img.shields.io/badge/tools-40-green.svg)](https://github.com/jaikumar3/nimbus-mcp)
+[![Tools](https://img.shields.io/badge/tools-41-green.svg)](https://github.com/jaikumar3/nimbus-mcp)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 [![AWS SDK](https://img.shields.io/badge/AWS%20SDK-v3-yellow.svg)](https://aws.amazon.com/sdk-for-javascript/)
 [![Status](https://img.shields.io/badge/status-production%20ready-brightgreen.svg)](https://github.com/jaikumar3/nimbus-mcp)
@@ -21,7 +21,7 @@
 
 ## 📖 Overview
 
-**Nimbus** is a comprehensive AWS security assessment framework built on the Model Context Protocol (MCP). It provides 40 production-ready tools covering enumeration, vulnerability scanning, **attack chain building**, privilege escalation analysis (50+ patterns), persistence detection, EKS/Kubernetes security, **multi-region scanning**, and compliance reporting for AWS cloud environments.
+**Nimbus** is a comprehensive AWS security assessment framework built on the Model Context Protocol (MCP). It provides 41 production-ready tools covering enumeration, vulnerability scanning, **attack chain building**, privilege escalation analysis (50+ patterns), persistence detection, EKS/Kubernetes security, **multi-region scanning**, and compliance reporting for AWS cloud environments.
 
 ### 🎯 Use Cases
 
@@ -36,7 +36,7 @@
 ### ⚡ Key Highlights
 
 ✅ **100% Read-Only** - Safe for production environments  
-✅ **40 Security Tools** - Comprehensive AWS service coverage  
+✅ **41 Security Tools** - Comprehensive AWS service coverage  
 ✅ **Attack Chain Builder** - Multi-step attack path discovery ⭐ NEW  
 ✅ **50+ Privesc Patterns** - Rhino Security Labs & Heimdall research ⭐ NEW  
 ✅ **EKS Attack Surface** - IRSA abuse, node role theft, RBAC escalation ⭐ NEW  

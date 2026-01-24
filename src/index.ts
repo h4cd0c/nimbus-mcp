@@ -9,7 +9,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 // AWS SDK imports - Phase 1
-import { EC2Client, DescribeInstancesCommand, DescribeSecurityGroupsCommand, DescribeVpcsCommand, DescribeSubnetsCommand } from "@aws-sdk/client-ec2";
+import { EC2Client, DescribeInstancesCommand, DescribeSecurityGroupsCommand, DescribeVpcsCommand, DescribeSubnetsCommand, DescribeImagesCommand, DescribeImageAttributeCommand } from "@aws-sdk/client-ec2";
 import { S3Client, ListBucketsCommand, GetBucketPolicyCommand, GetBucketEncryptionCommand, GetPublicAccessBlockCommand, GetBucketAclCommand, GetBucketVersioningCommand, GetBucketLoggingCommand, GetBucketPolicyStatusCommand, GetBucketLocationCommand } from "@aws-sdk/client-s3";
 import { IAMClient, ListUsersCommand, ListRolesCommand, ListPoliciesCommand, GetPolicyVersionCommand, ListAttachedUserPoliciesCommand, ListAttachedRolePoliciesCommand, ListUserPoliciesCommand, GetUserPolicyCommand, ListRolePoliciesCommand, GetRolePolicyCommand, GetRoleCommand, ListGroupsForUserCommand, ListAttachedGroupPoliciesCommand, GetPolicyCommand } from "@aws-sdk/client-iam";
 import { RDSClient, DescribeDBInstancesCommand, DescribeDBClustersCommand } from "@aws-sdk/client-rds";
@@ -827,6 +827,24 @@ const TOOLS: Tool[] = [
       },
     },
   },
+  {
+    name: "analyze_ami_security",
+    description: "Analyze AMI security: detect public AMIs, cross-account sharing, unencrypted snapshots, old/vulnerable images, and launch permission misconfigurations",
+    inputSchema: {
+      type: "object",
+      properties: {
+        region: {
+          type: "string",
+          description: "AWS region to scan",
+        },
+        includeAwsManaged: {
+          type: "boolean",
+          description: "Include AWS-managed AMIs in analysis (default: false)",
+        },
+      },
+      required: ["region"],
+    },
+  },
 ];
 
 // Tool handlers
@@ -1026,6 +1044,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: await detectPrivescPatterns(
           args?.principalArn as string | undefined,
           args?.includeRemediation !== false
+        ) }] };
+
+      case "analyze_ami_security":
+        if (!args || !args.region) throw new Error("region is required");
+        return { content: [{ type: "text", text: await analyzeAMISecurity(
+          args.region as string,
+          args?.includeAwsManaged as boolean || false
         ) }] };
 
       default:
@@ -7126,6 +7151,240 @@ async function listActiveRegions(scanMode?: string, regionsInput?: string): Prom
     output += `- Use \`scanMode: "all"\` to scan all 30+ regions\n`;
   }
   
+  return output;
+}
+
+// ============================================================================
+// AMI SECURITY ANALYSIS
+// ============================================================================
+
+/**
+ * Analyze AMI security: public exposure, cross-account sharing, encryption, age
+ */
+async function analyzeAMISecurity(region: string, includeAwsManaged: boolean = false): Promise<string> {
+  let output = `# AMI Security Analysis\n\n`;
+  output += `**Region:** ${region}\n`;
+  output += `**Scan Time:** ${new Date().toISOString()}\n\n`;
+
+  const findings: { severity: string; finding: string; amiId: string; }[] = [];
+  
+  try {
+    const ec2Client = new EC2Client({ region });
+    
+    // Get account ID
+    const stsClient = new STSClient({ region });
+    const identity = await stsClient.send(new GetCallerIdentityCommand({}));
+    const accountId = identity.Account || '';
+    
+    output += `**Account:** ${accountId}\n\n`;
+
+    // Get all AMIs owned by this account
+    const imagesCmd = new DescribeImagesCommand({
+      Owners: ['self'],
+    });
+    const imagesResponse = await ec2Client.send(imagesCmd);
+    const ownedImages = imagesResponse.Images || [];
+
+    output += `## Summary\n\n`;
+    output += `**Total AMIs Owned:** ${ownedImages.length}\n\n`;
+
+    if (ownedImages.length === 0) {
+      output += `[OK] No custom AMIs found in this account.\n`;
+      return output;
+    }
+
+    // Analyze each AMI
+    output += `## AMI Analysis\n\n`;
+    
+    let publicCount = 0;
+    let sharedCount = 0;
+    let unencryptedCount = 0;
+    let oldCount = 0;
+    const sharedWithAccounts = new Set<string>();
+
+    for (const image of ownedImages) {
+      const amiId = image.ImageId || 'Unknown';
+      const amiName = image.Name || 'Unnamed';
+      const creationDate = image.CreationDate ? new Date(image.CreationDate) : null;
+      const ageInDays = creationDate ? Math.floor((Date.now() - creationDate.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+      
+      // Check if AMI is public
+      if (image.Public) {
+        publicCount++;
+        findings.push({
+          severity: 'CRITICAL',
+          finding: `Public AMI - Anyone can launch instances from this image`,
+          amiId
+        });
+      }
+
+      // Check launch permissions for cross-account sharing
+      try {
+        const attrCmd = new DescribeImageAttributeCommand({
+          ImageId: amiId,
+          Attribute: 'launchPermission'
+        });
+        const attrResponse = await ec2Client.send(attrCmd);
+        
+        const launchPermissions = attrResponse.LaunchPermissions || [];
+        for (const perm of launchPermissions) {
+          if (perm.UserId && perm.UserId !== accountId) {
+            sharedCount++;
+            sharedWithAccounts.add(perm.UserId);
+            findings.push({
+              severity: 'HIGH',
+              finding: `Shared with external account: ${perm.UserId}`,
+              amiId
+            });
+          }
+          if (perm.Group === 'all') {
+            // Already caught by Public check, but double-check
+            if (!image.Public) {
+              publicCount++;
+              findings.push({
+                severity: 'CRITICAL',
+                finding: `Launch permission set to 'all' (public)`,
+                amiId
+              });
+            }
+          }
+        }
+      } catch (e) {
+        // May not have permission to check attributes
+      }
+
+      // Check encryption status of backing snapshots
+      const blockDevices = image.BlockDeviceMappings || [];
+      for (const device of blockDevices) {
+        if (device.Ebs && device.Ebs.Encrypted === false) {
+          unencryptedCount++;
+          findings.push({
+            severity: 'MEDIUM',
+            finding: `Unencrypted EBS snapshot: ${device.Ebs.SnapshotId || 'N/A'}`,
+            amiId
+          });
+          break; // Only count once per AMI
+        }
+      }
+
+      // Check age (>365 days is concerning)
+      if (ageInDays > 365) {
+        oldCount++;
+        findings.push({
+          severity: 'LOW',
+          finding: `Old AMI (${ageInDays} days) - may contain outdated packages/vulnerabilities`,
+          amiId
+        });
+      } else if (ageInDays > 180) {
+        findings.push({
+          severity: 'INFO',
+          finding: `AMI is ${ageInDays} days old - consider updating`,
+          amiId
+        });
+      }
+    }
+
+    // Risk Summary
+    output += `### Risk Overview\n\n`;
+    output += `| Risk | Count | Severity |\n`;
+    output += `|------|-------|----------|\n`;
+    output += `| Public AMIs | ${publicCount} | ${publicCount > 0 ? 'CRITICAL' : 'OK'} |\n`;
+    output += `| Cross-Account Shared | ${sharedCount} | ${sharedCount > 0 ? 'HIGH' : 'OK'} |\n`;
+    output += `| Unencrypted Snapshots | ${unencryptedCount} | ${unencryptedCount > 0 ? 'MEDIUM' : 'OK'} |\n`;
+    output += `| Old AMIs (>365 days) | ${oldCount} | ${oldCount > 0 ? 'LOW' : 'OK'} |\n\n`;
+
+    if (sharedWithAccounts.size > 0) {
+      output += `### External Accounts with Access\n\n`;
+      for (const acct of sharedWithAccounts) {
+        output += `- \`${acct}\`\n`;
+      }
+      output += `\n`;
+    }
+
+    // Detailed Findings
+    if (findings.length > 0) {
+      output += `### Detailed Findings\n\n`;
+      
+      const criticalFindings = findings.filter(f => f.severity === 'CRITICAL');
+      const highFindings = findings.filter(f => f.severity === 'HIGH');
+      const mediumFindings = findings.filter(f => f.severity === 'MEDIUM');
+      const lowFindings = findings.filter(f => f.severity === 'LOW');
+
+      if (criticalFindings.length > 0) {
+        output += `#### [CRITICAL] Critical Issues\n\n`;
+        for (const f of criticalFindings) {
+          output += `- **${f.amiId}**: ${f.finding}\n`;
+        }
+        output += `\n`;
+      }
+
+      if (highFindings.length > 0) {
+        output += `#### [HIGH] High Risk Issues\n\n`;
+        for (const f of highFindings) {
+          output += `- **${f.amiId}**: ${f.finding}\n`;
+        }
+        output += `\n`;
+      }
+
+      if (mediumFindings.length > 0) {
+        output += `#### [MEDIUM] Medium Risk Issues\n\n`;
+        for (const f of mediumFindings) {
+          output += `- **${f.amiId}**: ${f.finding}\n`;
+        }
+        output += `\n`;
+      }
+
+      if (lowFindings.length > 0) {
+        output += `#### [LOW] Low Risk Issues\n\n`;
+        for (const f of lowFindings) {
+          output += `- **${f.amiId}**: ${f.finding}\n`;
+        }
+        output += `\n`;
+      }
+    } else {
+      output += `[OK] No security issues found with AMIs.\n\n`;
+    }
+
+    // Remediation
+    output += `## Remediation\n\n`;
+    
+    if (publicCount > 0) {
+      output += `### Make AMIs Private\n`;
+      output += `\`\`\`bash\n`;
+      output += `# Remove public access\n`;
+      output += `aws ec2 modify-image-attribute --image-id ami-xxx --launch-permission "Remove=[{Group=all}]"\n`;
+      output += `\`\`\`\n\n`;
+    }
+
+    if (sharedCount > 0) {
+      output += `### Remove Cross-Account Sharing\n`;
+      output += `\`\`\`bash\n`;
+      output += `# Remove specific account access\n`;
+      output += `aws ec2 modify-image-attribute --image-id ami-xxx --launch-permission "Remove=[{UserId=123456789012}]"\n`;
+      output += `\`\`\`\n\n`;
+    }
+
+    if (unencryptedCount > 0) {
+      output += `### Encrypt AMIs\n`;
+      output += `\`\`\`bash\n`;
+      output += `# Copy AMI with encryption enabled\n`;
+      output += `aws ec2 copy-image --source-image-id ami-xxx --source-region ${region} --name "encrypted-copy" --encrypted --kms-key-id alias/aws/ebs\n`;
+      output += `\`\`\`\n\n`;
+    }
+
+    // Attack Vectors
+    output += `## Attack Vectors\n\n`;
+    output += `| Vector | Risk | MITRE ATT&CK |\n`;
+    output += `|--------|------|-------------|\n`;
+    output += `| Public AMI data exposure | CRITICAL | T1530 - Data from Cloud Storage |\n`;
+    output += `| AMI backdoor injection | HIGH | T1525 - Implant Container Image |\n`;
+    output += `| Credential harvesting from AMI | HIGH | T1552.001 - Credentials in Files |\n`;
+    output += `| Unencrypted snapshot access | MEDIUM | T1530 - Data from Cloud Storage |\n`;
+
+  } catch (error: any) {
+    output += `[FAIL] Error analyzing AMI security: ${error.message}\n`;
+  }
+
   return output;
 }
 
