@@ -6,7 +6,332 @@
  * - Rate limiting protection
  * - Retry logic with exponential backoff
  * - Error handling utilities
+ * - Input validation and sanitization (OWASP MCP05)
+ * - Audit logging (OWASP MCP08)
  */
+
+// ============================================
+// SECURITY: INPUT VALIDATION (OWASP MCP05)
+// ============================================
+
+/**
+ * Valid AWS region pattern
+ */
+const AWS_REGION_PATTERN = /^[a-z]{2}-[a-z]+-\d{1,2}$/;
+
+/**
+ * Valid AWS resource ID patterns
+ */
+const AWS_PATTERNS = {
+  region: AWS_REGION_PATTERN,
+  accountId: /^\d{12}$/,
+  arn: /^arn:aws:[a-z0-9-]+:[a-z0-9-]*:\d{12}:.+$/,
+  bucketName: /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/,
+  instanceId: /^i-[a-f0-9]{8,17}$/,
+  roleArn: /^arn:aws:iam::\d{12}:role\/[\w+=,.@-]+$/,
+  clusterName: /^[a-zA-Z][a-zA-Z0-9-_]{0,99}$/,
+  functionName: /^[a-zA-Z0-9-_]{1,140}$/,
+};
+
+/**
+ * Validate and sanitize AWS region input
+ * @param region - Raw region input
+ * @param allowSpecial - Allow 'all' or 'common' special values
+ */
+export function validateRegion(region: string | undefined, allowSpecial: boolean = true): string {
+  if (!region) {
+    return process.env.AWS_REGION || 'us-east-1';
+  }
+  
+  const sanitized = region.trim().toLowerCase();
+  
+  // Allow special values for multi-region scans
+  if (allowSpecial && (sanitized === 'all' || sanitized === 'common')) {
+    return sanitized;
+  }
+  
+  if (!AWS_REGION_PATTERN.test(sanitized)) {
+    throw new Error(`Invalid AWS region format: ${region}. Expected format: us-east-1`);
+  }
+  
+  return sanitized;
+}
+
+/**
+ * Validate generic string input (prevents injection)
+ * @param input - Raw input string
+ * @param maxLength - Maximum allowed length
+ * @param pattern - Optional regex pattern to validate against
+ */
+export function validateInput(
+  input: string | undefined,
+  options: {
+    required?: boolean;
+    maxLength?: number;
+    pattern?: RegExp;
+    patternName?: string;
+    allowedValues?: string[];
+  } = {}
+): string | undefined {
+  if (input === undefined || input === null || input === '') {
+    if (options.required) {
+      throw new Error('Required input is missing');
+    }
+    return undefined;
+  }
+  
+  // Sanitize: trim and remove control characters
+  const sanitized = input.toString().trim().replace(/[\x00-\x1f\x7f]/g, '');
+  
+  // Length check
+  const maxLen = options.maxLength || 1000;
+  if (sanitized.length > maxLen) {
+    throw new Error(`Input exceeds maximum length of ${maxLen} characters`);
+  }
+  
+  // Allowed values check
+  if (options.allowedValues && !options.allowedValues.includes(sanitized)) {
+    throw new Error(`Invalid value: ${sanitized}. Allowed: ${options.allowedValues.join(', ')}`);
+  }
+  
+  // Pattern validation
+  if (options.pattern && !options.pattern.test(sanitized)) {
+    const name = options.patternName || 'input';
+    throw new Error(`Invalid ${name} format: ${sanitized}`);
+  }
+  
+  return sanitized;
+}
+
+/**
+ * Validate AWS resource identifiers
+ */
+export function validateAWSResource(
+  value: string | undefined,
+  resourceType: keyof typeof AWS_PATTERNS,
+  required: boolean = false
+): string | undefined {
+  if (!value && !required) return undefined;
+  if (!value && required) {
+    throw new Error(`${resourceType} is required`);
+  }
+  
+  const pattern = AWS_PATTERNS[resourceType];
+  if (!pattern) {
+    throw new Error(`Unknown resource type: ${resourceType}`);
+  }
+  
+  return validateInput(value, {
+    required,
+    pattern,
+    patternName: resourceType,
+  });
+}
+
+// ============================================
+// SECURITY: AUDIT LOGGING (OWASP MCP08)
+// ============================================
+
+type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'SECURITY';
+
+interface AuditLogEntry {
+  timestamp: string;
+  level: LogLevel;
+  tool: string;
+  action: string;
+  region?: string;
+  accountId?: string;
+  input?: Record<string, any>;
+  result?: 'SUCCESS' | 'FAILURE' | 'PARTIAL';
+  duration?: number;
+  error?: string;
+  findings?: number;
+}
+
+class AuditLogger {
+  private logs: AuditLogEntry[] = [];
+  private maxLogs: number = 1000;
+  private enabled: boolean = true;
+
+  /**
+   * Log a tool invocation
+   */
+  logToolCall(entry: Omit<AuditLogEntry, 'timestamp'>): void {
+    if (!this.enabled) return;
+    
+    const logEntry: AuditLogEntry = {
+      ...entry,
+      timestamp: new Date().toISOString(),
+    };
+    
+    this.logs.push(logEntry);
+    
+    // Trim old logs
+    if (this.logs.length > this.maxLogs) {
+      this.logs = this.logs.slice(-this.maxLogs);
+    }
+    
+    // Output to stderr for real-time monitoring
+    const levelColors: Record<LogLevel, string> = {
+      DEBUG: '\x1b[36m',
+      INFO: '\x1b[32m',
+      WARN: '\x1b[33m',
+      ERROR: '\x1b[31m',
+      SECURITY: '\x1b[35m',
+    };
+    const reset = '\x1b[0m';
+    const color = levelColors[entry.level] || reset;
+    
+    console.error(
+      `${color}[${logEntry.timestamp}] [${entry.level}] ${entry.tool}: ${entry.action}${reset}` +
+      (entry.region ? ` (region: ${entry.region})` : '') +
+      (entry.result ? ` -> ${entry.result}` : '') +
+      (entry.findings !== undefined ? ` [${entry.findings} findings]` : '') +
+      (entry.error ? ` ERROR: ${entry.error}` : '')
+    );
+  }
+
+  /**
+   * Log security-relevant events
+   */
+  logSecurity(tool: string, action: string, details?: Record<string, any>): void {
+    this.logToolCall({
+      level: 'SECURITY',
+      tool,
+      action,
+      input: details,
+    });
+  }
+
+  /**
+   * Get audit log entries
+   */
+  getLogs(filter?: { level?: LogLevel; tool?: string; since?: Date }): AuditLogEntry[] {
+    let filtered = [...this.logs];
+    
+    if (filter?.level) {
+      filtered = filtered.filter(l => l.level === filter.level);
+    }
+    if (filter?.tool) {
+      filtered = filtered.filter(l => l.tool === filter.tool);
+    }
+    if (filter?.since) {
+      const since = filter.since.getTime();
+      filtered = filtered.filter(l => new Date(l.timestamp).getTime() >= since);
+    }
+    
+    return filtered;
+  }
+
+  /**
+   * Get audit statistics
+   */
+  getStats(): {
+    totalCalls: number;
+    byTool: Record<string, number>;
+    byResult: Record<string, number>;
+    securityEvents: number;
+  } {
+    const byTool: Record<string, number> = {};
+    const byResult: Record<string, number> = {};
+    let securityEvents = 0;
+    
+    for (const log of this.logs) {
+      byTool[log.tool] = (byTool[log.tool] || 0) + 1;
+      if (log.result) {
+        byResult[log.result] = (byResult[log.result] || 0) + 1;
+      }
+      if (log.level === 'SECURITY') {
+        securityEvents++;
+      }
+    }
+    
+    return {
+      totalCalls: this.logs.length,
+      byTool,
+      byResult,
+      securityEvents,
+    };
+  }
+
+  /**
+   * Clear logs
+   */
+  clear(): void {
+    this.logs = [];
+  }
+
+  /**
+   * Enable/disable logging
+   */
+  setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+  }
+}
+
+// Global audit logger instance
+export const auditLogger = new AuditLogger();
+
+/**
+ * Wrapper to audit a tool call
+ */
+export async function withAudit<T>(
+  toolName: string,
+  action: string,
+  fn: () => Promise<T>,
+  options: {
+    region?: string;
+    input?: Record<string, any>;
+  } = {}
+): Promise<T> {
+  const startTime = Date.now();
+  
+  try {
+    const result = await fn();
+    
+    auditLogger.logToolCall({
+      level: 'INFO',
+      tool: toolName,
+      action,
+      region: options.region,
+      input: sanitizeForLog(options.input),
+      result: 'SUCCESS',
+      duration: Date.now() - startTime,
+    });
+    
+    return result;
+  } catch (error: any) {
+    auditLogger.logToolCall({
+      level: 'ERROR',
+      tool: toolName,
+      action,
+      region: options.region,
+      input: sanitizeForLog(options.input),
+      result: 'FAILURE',
+      duration: Date.now() - startTime,
+      error: error.message,
+    });
+    
+    throw error;
+  }
+}
+
+/**
+ * Remove sensitive data from log entries
+ */
+function sanitizeForLog(input?: Record<string, any>): Record<string, any> | undefined {
+  if (!input) return undefined;
+  
+  const sensitiveKeys = ['password', 'secret', 'token', 'key', 'credential', 'auth'];
+  const sanitized: Record<string, any> = {};
+  
+  for (const [key, value] of Object.entries(input)) {
+    const iseSensitive = sensitiveKeys.some(s => key.toLowerCase().includes(s));
+    sanitized[key] = iseSensitive ? '[REDACTED]' : value;
+  }
+  
+  return sanitized;
+}
 
 // ============================================
 // CACHING
@@ -429,4 +754,4 @@ export async function batchProcess<T, R>(
 // EXPORTS
 // ============================================
 
-export { Cache, RateLimiter };
+export { Cache, RateLimiter, AWS_PATTERNS };

@@ -46,8 +46,8 @@ import { marked } from "marked";
 import { createObjectCsvWriter } from "csv-writer";
 import * as fs from "fs";
 
-// Utility imports - Caching, Rate Limiting, Retry Logic
-import { cache, withRetry, safeApiCall, rateLimiters } from "./utils.js";
+// Utility imports - Caching, Rate Limiting, Retry Logic, Security
+import { cache, withRetry, safeApiCall, rateLimiters, validateRegion, validateInput, auditLogger, withAudit } from "./utils.js";
 
 // Initialize AWS clients with default credentials
 const DEFAULT_REGION = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "us-east-1";
@@ -845,6 +845,29 @@ const TOOLS: Tool[] = [
       required: ["region"],
     },
   },
+  // ========== AUDIT & TELEMETRY TOOLS (OWASP MCP08) ==========
+  {
+    name: "get_audit_logs",
+    description: "Retrieve MCP server audit logs for security monitoring and compliance. Shows tool invocations, errors, and security events.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        level: {
+          type: "string",
+          description: "Filter by log level: DEBUG, INFO, WARN, ERROR, SECURITY (default: all)",
+          enum: ["DEBUG", "INFO", "WARN", "ERROR", "SECURITY"],
+        },
+        tool: {
+          type: "string",
+          description: "Filter by tool name (optional)",
+        },
+        limit: {
+          type: "number",
+          description: "Maximum number of log entries to return (default: 50)",
+        },
+      },
+    },
+  },
 ];
 
 // Tool handlers
@@ -854,6 +877,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
+
+  // OWASP MCP08: Log tool invocation for audit
+  auditLogger.logToolCall({
+    level: 'INFO',
+    tool: name,
+    action: 'INVOKED',
+    input: args as Record<string, any>,
+  });
 
   try {
     // ========== UTILITY TOOLS ==========
@@ -865,9 +896,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: await whoami(args?.region as string | undefined) }] };
 
       // ========== ENUMERATION & DISCOVERY TOOLS ==========
-      case "enumerate_ec2_instances":
-        if (!args || !args.region) throw new Error("region is required (use 'all', 'common', or specific region like 'us-east-1')");
-        return { content: [{ type: "text", text: await enumerateEC2InstancesMultiRegion(args.region as string) }] };
+      case "enumerate_ec2_instances": {
+        // OWASP MCP05: Validate input
+        const region = validateRegion(args?.region as string | undefined, true);
+        if (!region) throw new Error("region is required (use 'all', 'common', or specific region like 'us-east-1')");
+        return { content: [{ type: "text", text: await enumerateEC2InstancesMultiRegion(region) }] };
+      }
 
       case "analyze_s3_security":
         return { content: [{ type: "text", text: await analyzeS3Security(args?.bucketName as string | undefined, args?.scanMode as string | undefined) }] };
@@ -878,45 +912,63 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "enumerate_iam_roles":
         return { content: [{ type: "text", text: await enumerateIAMRoles() }] };
 
-      case "enumerate_rds_databases":
-        if (!args || !args.region) throw new Error("region is required (use 'all', 'common', or specific region)");
-        return { content: [{ type: "text", text: await enumerateRDSDatabasesMultiRegion(args.region as string) }] };
+      case "enumerate_rds_databases": {
+        const region = validateRegion(args?.region as string | undefined, true);
+        if (!region) throw new Error("region is required (use 'all', 'common', or specific region)");
+        return { content: [{ type: "text", text: await enumerateRDSDatabasesMultiRegion(region) }] };
+      }
 
-      case "analyze_network_security":
-        if (!args || !args.region) throw new Error("region is required (use 'all', 'common', or specific region)");
-        return { content: [{ type: "text", text: await analyzeNetworkSecurityMultiRegion(args.region as string, args?.scanMode as string | undefined) }] };
+      case "analyze_network_security": {
+        const region = validateRegion(args?.region as string | undefined, true);
+        if (!region) throw new Error("region is required (use 'all', 'common', or specific region)");
+        return { content: [{ type: "text", text: await analyzeNetworkSecurityMultiRegion(region, args?.scanMode as string | undefined) }] };
+      }
 
-      case "analyze_lambda_security":
-        if (!args || !args.region) throw new Error("region is required (use 'all', 'common', or specific region)");
-        return { content: [{ type: "text", text: await analyzeLambdaSecurityMultiRegion(args.region as string, args?.scanMode as string | undefined) }] };
+      case "analyze_lambda_security": {
+        const region = validateRegion(args?.region as string | undefined, true);
+        if (!region) throw new Error("region is required (use 'all', 'common', or specific region)");
+        return { content: [{ type: "text", text: await analyzeLambdaSecurityMultiRegion(region, args?.scanMode as string | undefined) }] };
+      }
 
       // ========== NETWORK & INFRASTRUCTURE SECURITY ==========
-      case "enumerate_eks_clusters":
-        if (!args || !args.region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await enumerateEKSClusters(args.region as string) }] };
+      case "enumerate_eks_clusters": {
+        const region = validateRegion(args?.region as string | undefined, false);
+        if (!region) throw new Error("region is required");
+        return { content: [{ type: "text", text: await enumerateEKSClusters(region) }] };
+      }
 
-      case "analyze_encryption_security":
-        if (!args || !args.region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await analyzeEncryptionSecurity(args.region as string, args?.resourceType as string | undefined, args?.tableName as string | undefined) }] };
+      case "analyze_encryption_security": {
+        const region = validateRegion(args?.region as string | undefined, false);
+        if (!region) throw new Error("region is required");
+        return { content: [{ type: "text", text: await analyzeEncryptionSecurity(region, args?.resourceType as string | undefined, args?.tableName as string | undefined) }] };
+      }
 
       case "analyze_api_distribution_security":
         return { content: [{ type: "text", text: await analyzeAPIDistributionSecurity(args?.region as string | undefined, args?.scanMode as string | undefined) }] };
 
-      case "scan_secrets_manager":
-        if (!args || !args.region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await scanSecretsManager(args.region as string) }] };
+      case "scan_secrets_manager": {
+        const region = validateRegion(args?.region as string | undefined, false);
+        if (!region) throw new Error("region is required");
+        return { content: [{ type: "text", text: await scanSecretsManager(region) }] };
+      }
 
-      case "enumerate_public_resources":
-        if (!args || !args.region) throw new Error("region is required (use 'all', 'common', or specific region)");
-        return { content: [{ type: "text", text: await enumeratePublicResourcesMultiRegion(args.region as string) }] };
+      case "enumerate_public_resources": {
+        const region = validateRegion(args?.region as string | undefined, true);
+        if (!region) throw new Error("region is required (use 'all', 'common', or specific region)");
+        return { content: [{ type: "text", text: await enumeratePublicResourcesMultiRegion(region) }] };
+      }
 
-      case "generate_security_report":
-        if (!args || !args.region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await generateSecurityReport(args.region as string, args.format as string | undefined, args.outputFile as string | undefined) }] };
+      case "generate_security_report": {
+        const region = validateRegion(args?.region as string | undefined, false);
+        if (!region) throw new Error("region is required");
+        return { content: [{ type: "text", text: await generateSecurityReport(region, args?.format as string | undefined, args?.outputFile as string | undefined) }] };
+      }
 
-      case "scan_elasticache_security":
-        if (!args || !args.region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await scanElastiCacheSecurity(args.region as string) }] };
+      case "scan_elasticache_security": {
+        const region = validateRegion(args?.region as string | undefined, false);
+        if (!region) throw new Error("region is required");
+        return { content: [{ type: "text", text: await scanElastiCacheSecurity(region) }] };
+      }
 
       case "get_guardduty_findings":
         if (!args || !args.region) throw new Error("region is required");
@@ -1053,6 +1105,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           args?.includeAwsManaged as boolean || false
         ) }] };
 
+      // ========== AUDIT & TELEMETRY TOOLS (OWASP MCP08) ==========
+      case "get_audit_logs":
+        return { content: [{ type: "text", text: getAuditLogs(
+          args?.level as string | undefined,
+          args?.tool as string | undefined,
+          args?.limit as number | undefined
+        ) }] };
+
       default:
         return {
           content: [{ type: "text", text: `Unknown tool: ${name}` }],
@@ -1129,6 +1189,73 @@ function clearCache(pattern?: string): string {
     cache.clear();
     return `[OK] Cleared all ${count} cached items. Fresh data will be fetched on next scan.`;
   }
+}
+
+// ========== AUDIT & TELEMETRY FUNCTIONS (OWASP MCP08) ==========
+
+function getAuditLogs(level?: string, tool?: string, limit?: number): string {
+  const logs = auditLogger.getLogs({
+    level: level as any,
+    tool: tool,
+  });
+  
+  const stats = auditLogger.getStats();
+  const displayLogs = logs.slice(-(limit || 50));
+  
+  let output = `# 📋 MCP Server Audit Logs\n\n`;
+  output += `> OWASP MCP08 Compliance: Audit & Telemetry\n\n`;
+  
+  // Statistics
+  output += `## 📊 Statistics\n\n`;
+  output += `| Metric | Value |\n`;
+  output += `|--------|-------|\n`;
+  output += `| Total Tool Calls | ${stats.totalCalls} |\n`;
+  output += `| Security Events | ${stats.securityEvents} |\n`;
+  output += `| Successful Calls | ${stats.byResult['SUCCESS'] || 0} |\n`;
+  output += `| Failed Calls | ${stats.byResult['FAILURE'] || 0} |\n\n`;
+  
+  // Tool usage breakdown
+  if (Object.keys(stats.byTool).length > 0) {
+    output += `## 🔧 Tool Usage\n\n`;
+    output += `| Tool | Invocations |\n`;
+    output += `|------|-------------|\n`;
+    const sortedTools = Object.entries(stats.byTool).sort((a, b) => b[1] - a[1]);
+    for (const [toolName, count] of sortedTools.slice(0, 10)) {
+      output += `| ${toolName} | ${count} |\n`;
+    }
+    output += `\n`;
+  }
+  
+  // Recent logs
+  output += `## 📝 Recent Activity (${displayLogs.length} entries)\n\n`;
+  
+  if (displayLogs.length === 0) {
+    output += `*No audit logs recorded yet.*\n`;
+  } else {
+    output += `| Time | Level | Tool | Action | Result |\n`;
+    output += `|------|-------|------|--------|--------|\n`;
+    
+    for (const log of displayLogs) {
+      const time = log.timestamp.split('T')[1]?.split('.')[0] || log.timestamp;
+      const levelEmoji = {
+        'DEBUG': '🔍',
+        'INFO': 'ℹ️',
+        'WARN': '⚠️',
+        'ERROR': '❌',
+        'SECURITY': '🛡️',
+      }[log.level] || '📝';
+      
+      output += `| ${time} | ${levelEmoji} ${log.level} | ${log.tool} | ${log.action} | ${log.result || '-'} |\n`;
+    }
+  }
+  
+  output += `\n## 🔒 Security Notes\n\n`;
+  output += `- Logs are stored in memory only (not persisted)\n`;
+  output += `- Maximum ${1000} entries retained\n`;
+  output += `- Sensitive input values are redacted\n`;
+  output += `- Compliant with OWASP MCP Top 10 - MCP08: Lack of Audit and Telemetry\n`;
+  
+  return output;
 }
 
 // ========== UTILITY FUNCTIONS ==========

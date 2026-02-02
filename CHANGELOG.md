@@ -5,6 +5,50 @@ All notable changes to **Nimbus** (AWS Security Assessment MCP Server) will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.2] - 2026-01-24
+
+### Added - OWASP MCP Top 10 Security Compliance
+
+#### Security Features (OWASP MCP Compliance)
+- **Input Validation (MCP05)** - New `validateRegion()` and `validateInput()` functions
+  - Strict regex patterns for AWS regions, ARNs, bucket names, instance IDs
+  - Control character sanitization
+  - Length limits to prevent DoS
+  - Allowed values enforcement
+
+- **Audit Logging (MCP08)** - New `auditLogger` utility and `get_audit_logs` tool
+  - Logs all tool invocations with timestamps
+  - Tracks success/failure status
+  - Sensitive data auto-redaction
+  - Statistics and tool usage breakdown
+  - Real-time stderr output for monitoring
+
+- **SECURITY.md** - Comprehensive security documentation
+  - OWASP MCP Top 10 compliance matrix
+  - Security feature documentation
+  - Input validation patterns
+  - Security recommendations for users and developers
+  - Vulnerability reporting guidelines
+
+#### New Tool
+- **get_audit_logs** - Retrieve MCP server audit logs for security monitoring
+  - Filter by log level (DEBUG, INFO, WARN, ERROR, SECURITY)
+  - Filter by tool name
+  - Limit number of entries returned
+  - Statistics dashboard with tool usage breakdown
+
+### Changed
+- Tool count: 41 → 42
+- All region-accepting tools now use `validateRegion()` for input validation
+- Tool handlers log invocations to audit logger
+
+### Security
+- All user inputs validated before processing
+- No hardcoded credentials (MCP01)
+- Read-only operations only (MCP02)
+- Clear tool descriptions (MCP03)
+- Full audit trail (MCP08)
+
 ## [1.5.1] - 2026-01-24
 
 ### Added
