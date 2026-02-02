@@ -886,117 +886,196 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     input: args as Record<string, any>,
   });
 
+  // ========== OWASP MCP05: Comprehensive Input Validation ==========
+  // Helper to validate all common input types
+  const v = {
+    region: (val: any, allowSpecial = false) => validateRegion(val as string | undefined, allowSpecial),
+    regionRequired: (val: any, allowSpecial = false) => {
+      const r = validateRegion(val as string | undefined, allowSpecial);
+      if (!r) throw new Error("region is required");
+      return r;
+    },
+    bucketName: (val: any) => validateInput(val as string | undefined, {
+      maxLength: 63,
+      pattern: /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/,
+      patternName: 'S3 bucket name',
+    }),
+    clusterName: (val: any) => validateInput(val as string | undefined, {
+      maxLength: 100,
+      pattern: /^[a-zA-Z][a-zA-Z0-9_-]*$/,
+      patternName: 'EKS cluster name',
+    }),
+    clusterNameRequired: (val: any) => {
+      const c = validateInput(val as string | undefined, {
+        required: true,
+        maxLength: 100,
+        pattern: /^[a-zA-Z][a-zA-Z0-9_-]*$/,
+        patternName: 'EKS cluster name',
+      });
+      if (!c) throw new Error("clusterName is required");
+      return c;
+    },
+    arn: (val: any) => validateInput(val as string | undefined, {
+      maxLength: 2048,
+      pattern: /^arn:aws:[a-z0-9-]+:[a-z0-9-]*:\d{0,12}:.+$/,
+      patternName: 'ARN',
+    }),
+    scanMode: (val: any, allowed: string[]) => validateInput(val as string | undefined, {
+      maxLength: 50,
+      allowedValues: allowed,
+    }),
+    severity: (val: any) => validateInput(val as string | undefined, {
+      allowedValues: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'],
+    }),
+    format: (val: any) => validateInput(val as string | undefined, {
+      allowedValues: ['markdown', 'json', 'html', 'pdf', 'csv'],
+    }),
+    framework: (val: any) => validateInput(val as string | undefined, {
+      allowedValues: ['nist', 'iso27001', 'pci-dss', 'hipaa', 'soc2', 'cis'],
+    }),
+    resourceType: (val: any, allowed: string[]) => validateInput(val as string | undefined, {
+      maxLength: 50,
+      allowedValues: allowed,
+    }),
+    tableName: (val: any) => validateInput(val as string | undefined, {
+      maxLength: 255,
+      pattern: /^[a-zA-Z0-9_.-]+$/,
+      patternName: 'table name',
+    }),
+    filePath: (val: any) => {
+      // Prevent path traversal attacks
+      const path = validateInput(val as string | undefined, { maxLength: 500 });
+      if (path && (path.includes('..') || path.includes('\0'))) {
+        throw new Error("Invalid file path: path traversal detected");
+      }
+      return path;
+    },
+    genericString: (val: any, maxLen = 200) => validateInput(val as string | undefined, { maxLength: maxLen }),
+  };
+
   try {
     // ========== UTILITY TOOLS ==========
     switch (name) {
       case "help":
         return { content: [{ type: "text", text: getHelpText() }] };
 
-      case "whoami":
-        return { content: [{ type: "text", text: await whoami(args?.region as string | undefined) }] };
+      case "whoami": {
+        const region = v.region(args?.region);
+        return { content: [{ type: "text", text: await whoami(region) }] };
+      }
 
       // ========== ENUMERATION & DISCOVERY TOOLS ==========
       case "enumerate_ec2_instances": {
-        // OWASP MCP05: Validate input
-        const region = validateRegion(args?.region as string | undefined, true);
-        if (!region) throw new Error("region is required (use 'all', 'common', or specific region like 'us-east-1')");
+        const region = v.regionRequired(args?.region, true);
         return { content: [{ type: "text", text: await enumerateEC2InstancesMultiRegion(region) }] };
       }
 
-      case "analyze_s3_security":
-        return { content: [{ type: "text", text: await analyzeS3Security(args?.bucketName as string | undefined, args?.scanMode as string | undefined) }] };
+      case "analyze_s3_security": {
+        const bucketName = v.bucketName(args?.bucketName);
+        const scanMode = v.scanMode(args?.scanMode, ['quick', 'deep', 'compliance']);
+        return { content: [{ type: "text", text: await analyzeS3Security(bucketName, scanMode) }] };
+      }
 
-      case "analyze_iam_users":
-        return { content: [{ type: "text", text: await analyzeIAMUsers(args?.policyArn as string | undefined, args?.scanMode as string | undefined) }] };
+      case "analyze_iam_users": {
+        const policyArn = v.arn(args?.policyArn);
+        const scanMode = v.scanMode(args?.scanMode, ['users', 'policies', 'both']);
+        return { content: [{ type: "text", text: await analyzeIAMUsers(policyArn, scanMode) }] };
+      }
 
       case "enumerate_iam_roles":
         return { content: [{ type: "text", text: await enumerateIAMRoles() }] };
 
       case "enumerate_rds_databases": {
-        const region = validateRegion(args?.region as string | undefined, true);
-        if (!region) throw new Error("region is required (use 'all', 'common', or specific region)");
+        const region = v.regionRequired(args?.region, true);
         return { content: [{ type: "text", text: await enumerateRDSDatabasesMultiRegion(region) }] };
       }
 
       case "analyze_network_security": {
-        const region = validateRegion(args?.region as string | undefined, true);
-        if (!region) throw new Error("region is required (use 'all', 'common', or specific region)");
-        return { content: [{ type: "text", text: await analyzeNetworkSecurityMultiRegion(region, args?.scanMode as string | undefined) }] };
+        const region = v.regionRequired(args?.region, true);
+        const scanMode = v.scanMode(args?.scanMode, ['security_groups', 'nacls', 'both']);
+        return { content: [{ type: "text", text: await analyzeNetworkSecurityMultiRegion(region, scanMode) }] };
       }
 
       case "analyze_lambda_security": {
-        const region = validateRegion(args?.region as string | undefined, true);
-        if (!region) throw new Error("region is required (use 'all', 'common', or specific region)");
-        return { content: [{ type: "text", text: await analyzeLambdaSecurityMultiRegion(region, args?.scanMode as string | undefined) }] };
+        const region = v.regionRequired(args?.region, true);
+        const scanMode = v.scanMode(args?.scanMode, ['enumerate', 'roles', 'both']);
+        return { content: [{ type: "text", text: await analyzeLambdaSecurityMultiRegion(region, scanMode) }] };
       }
 
       // ========== NETWORK & INFRASTRUCTURE SECURITY ==========
       case "enumerate_eks_clusters": {
-        const region = validateRegion(args?.region as string | undefined, false);
-        if (!region) throw new Error("region is required");
+        const region = v.regionRequired(args?.region, false);
         return { content: [{ type: "text", text: await enumerateEKSClusters(region) }] };
       }
 
       case "analyze_encryption_security": {
-        const region = validateRegion(args?.region as string | undefined, false);
-        if (!region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await analyzeEncryptionSecurity(region, args?.resourceType as string | undefined, args?.tableName as string | undefined) }] };
+        const region = v.regionRequired(args?.region, false);
+        const resourceType = v.resourceType(args?.resourceType, ['kms', 'dynamodb', 'both']);
+        const tableName = v.tableName(args?.tableName);
+        return { content: [{ type: "text", text: await analyzeEncryptionSecurity(region, resourceType, tableName) }] };
       }
 
-      case "analyze_api_distribution_security":
-        return { content: [{ type: "text", text: await analyzeAPIDistributionSecurity(args?.region as string | undefined, args?.scanMode as string | undefined) }] };
+      case "analyze_api_distribution_security": {
+        const region = v.region(args?.region);
+        const scanMode = v.scanMode(args?.scanMode, ['api_gateway', 'cloudfront', 'both']);
+        return { content: [{ type: "text", text: await analyzeAPIDistributionSecurity(region, scanMode) }] };
+      }
 
       case "scan_secrets_manager": {
-        const region = validateRegion(args?.region as string | undefined, false);
-        if (!region) throw new Error("region is required");
+        const region = v.regionRequired(args?.region, false);
         return { content: [{ type: "text", text: await scanSecretsManager(region) }] };
       }
 
       case "enumerate_public_resources": {
-        const region = validateRegion(args?.region as string | undefined, true);
-        if (!region) throw new Error("region is required (use 'all', 'common', or specific region)");
+        const region = v.regionRequired(args?.region, true);
         return { content: [{ type: "text", text: await enumeratePublicResourcesMultiRegion(region) }] };
       }
 
       case "generate_security_report": {
-        const region = validateRegion(args?.region as string | undefined, false);
-        if (!region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await generateSecurityReport(region, args?.format as string | undefined, args?.outputFile as string | undefined) }] };
+        const region = v.regionRequired(args?.region, false);
+        const format = v.format(args?.format);
+        const outputFile = v.filePath(args?.outputFile);
+        return { content: [{ type: "text", text: await generateSecurityReport(region, format, outputFile) }] };
       }
 
       case "scan_elasticache_security": {
-        const region = validateRegion(args?.region as string | undefined, false);
-        if (!region) throw new Error("region is required");
+        const region = v.regionRequired(args?.region, false);
         return { content: [{ type: "text", text: await scanElastiCacheSecurity(region) }] };
       }
 
-      case "get_guardduty_findings":
-        if (!args || !args.region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await getGuardDutyFindings(args.region as string, args.severity as string | undefined) }] };
+      case "get_guardduty_findings": {
+        const region = v.regionRequired(args?.region, false);
+        const severity = v.severity(args?.severity);
+        return { content: [{ type: "text", text: await getGuardDutyFindings(region, severity) }] };
+      }
 
-      case "analyze_messaging_security":
-        if (!args || !args.region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await analyzeMessagingSecurity(args.region as string, args?.scanMode as string | undefined) }] };
+      case "analyze_messaging_security": {
+        const region = v.regionRequired(args?.region, false);
+        const scanMode = v.scanMode(args?.scanMode, ['sns', 'sqs', 'both']);
+        return { content: [{ type: "text", text: await analyzeMessagingSecurity(region, scanMode) }] };
+      }
 
-      case "generate_tra_report":
-        if (!args || !args.region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await generateTRAReport(
-          args.region as string, 
-          args.framework as string | undefined, 
-          args.format as string | undefined, 
-          args.outputFile as string | undefined
-        ) }] };
+      case "generate_tra_report": {
+        const region = v.regionRequired(args?.region, false);
+        const framework = v.framework(args?.framework);
+        const format = v.format(args?.format);
+        const outputFile = v.filePath(args?.outputFile);
+        return { content: [{ type: "text", text: await generateTRAReport(region, framework, format, outputFile) }] };
+      }
 
-      case "analyze_infrastructure_automation":
-        if (!args || !args.region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await analyzeInfrastructureAutomation(args.region as string, args?.scanMode as string | undefined) }] };
+      case "analyze_infrastructure_automation": {
+        const region = v.regionRequired(args?.region, false);
+        const scanMode = v.scanMode(args?.scanMode, ['cloudformation', 'eventbridge', 'both']);
+        return { content: [{ type: "text", text: await analyzeInfrastructureAutomation(region, scanMode) }] };
+      }
 
       case "enumerate_organizations":
         return { content: [{ type: "text", text: await enumerateOrganizations() }] };
 
-      case "enumerate_detection_services":
-        if (!args || !args.region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await enumerateDetectionServices(args.region as string) }] };
+      case "enumerate_detection_services": {
+        const region = v.regionRequired(args?.region, false);
+        return { content: [{ type: "text", text: await enumerateDetectionServices(region) }] };
+      }
 
       // ========== PHASE 2: ADVANCED PERMISSION ANALYSIS TOOLS ==========
       case "analyze_iam_trust_chains":
@@ -1006,120 +1085,151 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: await findOverlyPermissiveRoles() }] };
 
       // ========== PHASE 3: PERSISTENCE & EVASION DETECTION TOOLS ==========
-      case "detect_persistence_mechanisms":
-        if (!args || !args.region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await detectPersistenceMechanisms(args.region as string) }] };
+      case "detect_persistence_mechanisms": {
+        const region = v.regionRequired(args?.region, false);
+        return { content: [{ type: "text", text: await detectPersistenceMechanisms(region) }] };
+      }
 
-      case "analyze_service_role_chain":
-        if (!args || !args.region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await analyzeServiceRoleChain(args.region as string) }] };
+      case "analyze_service_role_chain": {
+        const region = v.regionRequired(args?.region, false);
+        return { content: [{ type: "text", text: await analyzeServiceRoleChain(region) }] };
+      }
 
       case "analyze_cross_account_movement":
         return { content: [{ type: "text", text: await trackCrossAccountMovement() }] };
 
-      case "detect_mfa_bypass_vectors":
-        if (!args || !args.region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await detectMFABypassVectors(args.region as string) }] };
+      case "detect_mfa_bypass_vectors": {
+        const region = v.regionRequired(args?.region, false);
+        return { content: [{ type: "text", text: await detectMFABypassVectors(region) }] };
+      }
 
       // New security tools
-      case "analyze_cloudwatch_security":
-        if (!args || !args.region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await analyzeCloudWatchSecurity(args.region as string) }] };
+      case "analyze_cloudwatch_security": {
+        const region = v.regionRequired(args?.region, false);
+        return { content: [{ type: "text", text: await analyzeCloudWatchSecurity(region) }] };
+      }
 
-      case "scan_ssm_security":
-        if (!args || !args.region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await scanSSMSecurity(args.region as string) }] };
+      case "scan_ssm_security": {
+        const region = v.regionRequired(args?.region, false);
+        return { content: [{ type: "text", text: await scanSSMSecurity(region) }] };
+      }
 
-      case "analyze_ec2_metadata_exposure":
-        if (!args || !args.region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await analyzeEC2MetadataExposure(args.region as string) }] };
+      case "analyze_ec2_metadata_exposure": {
+        const region = v.regionRequired(args?.region, false);
+        return { content: [{ type: "text", text: await analyzeEC2MetadataExposure(region) }] };
+      }
 
-      case "scan_resource_policies":
-        if (!args || !args.region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await scanResourcePolicies(args.region as string, args?.resourceType as string) }] };
+      case "scan_resource_policies": {
+        const region = v.regionRequired(args?.region, false);
+        const resourceType = v.resourceType(args?.resourceType, ['s3', 'sqs', 'sns', 'kms', 'lambda', 'all']);
+        return { content: [{ type: "text", text: await scanResourcePolicies(region, resourceType) }] };
+      }
 
-      case "analyze_network_exposure":
-        if (!args || !args.region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await analyzeNetworkExposure(args.region as string) }] };
+      case "analyze_network_exposure": {
+        const region = v.regionRequired(args?.region, false);
+        return { content: [{ type: "text", text: await analyzeNetworkExposure(region) }] };
+      }
 
-      case "detect_data_exfiltration_paths":
-        if (!args || !args.region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await detectDataExfiltrationPaths(args.region as string) }] };
+      case "detect_data_exfiltration_paths": {
+        const region = v.regionRequired(args?.region, false);
+        return { content: [{ type: "text", text: await detectDataExfiltrationPaths(region) }] };
+      }
 
       // ========== KUBERNETES SECURITY TOOLS ==========
-      case "scan_eks_service_accounts":
-        if (!args || !args.region || !args.clusterName) throw new Error("region and clusterName are required");
-        return { content: [{ type: "text", text: await scanEKSServiceAccounts(args.region as string, args.clusterName as string) }] };
+      case "scan_eks_service_accounts": {
+        const region = v.regionRequired(args?.region, false);
+        const clusterName = v.clusterNameRequired(args?.clusterName);
+        return { content: [{ type: "text", text: await scanEKSServiceAccounts(region, clusterName) }] };
+      }
 
-      case "hunt_eks_secrets":
-        if (!args || !args.region || !args.clusterName) throw new Error("region and clusterName are required");
-        return { content: [{ type: "text", text: await huntEKSSecrets(args.region as string, args.clusterName as string) }] };
+      case "hunt_eks_secrets": {
+        const region = v.regionRequired(args?.region, false);
+        const clusterName = v.clusterNameRequired(args?.clusterName);
+        return { content: [{ type: "text", text: await huntEKSSecrets(region, clusterName) }] };
+      }
 
       // ========== MULTI-REGION SCANNING TOOLS ==========
-      case "scan_all_regions":
-        if (!args || !args.resourceType) throw new Error("resourceType is required");
-        return { content: [{ type: "text", text: await scanAllRegions(
-          args.resourceType as string,
-          args.scanMode as string | undefined,
-          args.parallelism as number | undefined,
-          args.regions as string | undefined
-        ) }] };
+      case "scan_all_regions": {
+        const resourceType = v.resourceType(args?.resourceType, ['ec2', 'rds', 'lambda', 's3', 'eks', 'all']);
+        if (!resourceType) throw new Error("resourceType is required");
+        const scanMode = v.scanMode(args?.scanMode, ['quick', 'deep']);
+        const parallelism = typeof args?.parallelism === 'number' && args.parallelism > 0 && args.parallelism <= 10 
+          ? args.parallelism : undefined;
+        const regions = v.genericString(args?.regions);
+        return { content: [{ type: "text", text: await scanAllRegions(resourceType, scanMode, parallelism, regions) }] };
+      }
 
-      case "list_active_regions":
-        return { content: [{ type: "text", text: await listActiveRegions(
-          args?.scanMode as string | undefined,
-          args?.regions as string | undefined
-        ) }] };
+      case "list_active_regions": {
+        const scanMode = v.scanMode(args?.scanMode, ['quick', 'thorough']);
+        const regions = v.genericString(args?.regions);
+        return { content: [{ type: "text", text: await listActiveRegions(scanMode, regions) }] };
+      }
 
       // ========== CACHE MANAGEMENT TOOLS ==========
       case "cache_stats":
         return { content: [{ type: "text", text: getCacheStats() }] };
 
-      case "cache_clear":
-        return { content: [{ type: "text", text: clearCache(args?.pattern as string | undefined) }] };
+      case "cache_clear": {
+        const pattern = v.genericString(args?.pattern, 100);
+        return { content: [{ type: "text", text: clearCache(pattern) }] };
+      }
 
       // ========== ATTACK CHAIN & ADVANCED ANALYSIS TOOLS ==========
-      case "build_attack_chains":
-        return { content: [{ type: "text", text: await buildAttackChains(
-          args?.region as string || 'us-east-1',
-          args?.principalArn as string | undefined,
-          args?.minSeverity as string || 'HIGH'
-        ) }] };
+      case "build_attack_chains": {
+        const region = v.region(args?.region) || 'us-east-1';
+        const principalArn = v.arn(args?.principalArn);
+        const minSeverity = v.severity(args?.minSeverity) || 'HIGH';
+        return { content: [{ type: "text", text: await buildAttackChains(region, principalArn, minSeverity) }] };
+      }
 
-      case "analyze_eks_attack_surface":
-        return { content: [{ type: "text", text: await analyzeEKSAttackSurface(
-          args?.region as string,
-          args?.clusterName as string | undefined
-        ) }] };
+      case "analyze_eks_attack_surface": {
+        const region = v.region(args?.region);
+        const clusterName = v.clusterName(args?.clusterName);
+        return { content: [{ type: "text", text: await analyzeEKSAttackSurface(region, clusterName) }] };
+      }
 
-      case "detect_privesc_patterns":
-        return { content: [{ type: "text", text: await detectPrivescPatterns(
-          args?.principalArn as string | undefined,
-          args?.includeRemediation !== false
-        ) }] };
+      case "detect_privesc_patterns": {
+        const principalArn = v.arn(args?.principalArn);
+        const includeRemediation = args?.includeRemediation !== false;
+        return { content: [{ type: "text", text: await detectPrivescPatterns(principalArn, includeRemediation) }] };
+      }
 
-      case "analyze_ami_security":
-        if (!args || !args.region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await analyzeAMISecurity(
-          args.region as string,
-          args?.includeAwsManaged as boolean || false
-        ) }] };
+      case "analyze_ami_security": {
+        const region = v.regionRequired(args?.region, false);
+        const includeAwsManaged = args?.includeAwsManaged === true;
+        return { content: [{ type: "text", text: await analyzeAMISecurity(region, includeAwsManaged) }] };
+      }
 
       // ========== AUDIT & TELEMETRY TOOLS (OWASP MCP08) ==========
-      case "get_audit_logs":
-        return { content: [{ type: "text", text: getAuditLogs(
-          args?.level as string | undefined,
-          args?.tool as string | undefined,
-          args?.limit as number | undefined
-        ) }] };
+      case "get_audit_logs": {
+        const level = v.scanMode(args?.level, ['DEBUG', 'INFO', 'WARN', 'ERROR', 'SECURITY']);
+        const tool = v.genericString(args?.tool, 100);
+        const limit = typeof args?.limit === 'number' && args.limit > 0 && args.limit <= 500 
+          ? args.limit : undefined;
+        return { content: [{ type: "text", text: getAuditLogs(level, tool, limit) }] };
+      }
 
       default:
+        auditLogger.logToolCall({
+          level: 'WARN',
+          tool: name,
+          action: 'UNKNOWN_TOOL',
+          result: 'FAILURE',
+        });
         return {
           content: [{ type: "text", text: `Unknown tool: ${name}` }],
           isError: true,
         };
     }
   } catch (error: any) {
+    // OWASP MCP08: Log errors
+    auditLogger.logToolCall({
+      level: 'ERROR',
+      tool: name,
+      action: 'EXECUTION_FAILED',
+      error: error.message,
+      result: 'FAILURE',
+    });
     return {
       content: [{ type: "text", text: `Error: ${error.message}` }],
       isError: true,
