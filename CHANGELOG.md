@@ -5,6 +5,34 @@ All notable changes to **Nimbus** (AWS Security Assessment MCP Server) will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.4] - 2025-01-28
+
+### Added - MCP Compliance & Quality Improvements
+
+#### MCP Tool Annotations (OWASP MCP-05)
+- **45/45 Tools Annotated** - Complete annotation coverage for all tools
+  - `readOnly: true` - All tools are non-destructive (read-only operations)
+  - `destructive: false` - No tools modify AWS infrastructure
+  - `idempotent: true/false` - Utility tools (help, cache) are idempotent
+  - `openWorld: true/false` - Tools requiring AWS API marked as openWorld
+
+#### Comprehensive Test Suite
+- **325+ Tests** - Complete test coverage across 3 test files
+  - `tests/utils.test.ts` (145 tests) - Utility functions, validation, caching, rate limiting
+  - `tests/tools.test.ts` (85 tests) - Tool structure, naming conventions, schemas
+  - `tests/security.test.ts` (95 tests) - OWASP MCP compliance, security best practices
+  - Jest with ts-jest, ES modules support
+  - Test documentation in `tests/README.md`
+
+#### Quality Improvements
+- **Tool Count Correction** - Updated from 42 to 45 tools (accurate count)
+- **Test Infrastructure** - Professional test suite with comprehensive coverage
+- **Documentation** - Detailed test README with examples and guidelines
+
+### Changed
+- Version bumped from 1.5.3 to 1.5.4
+- Package description updated to reflect accurate tool count (45 tools)
+
 ## [1.5.2] - 2026-01-24
 
 ### Added - OWASP MCP Top 10 Security Compliance

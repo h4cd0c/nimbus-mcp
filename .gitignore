@@ -1,13 +1,51 @@
+# Dependencies
 node_modules/
-dist/
-*.log
-.DS_Store
-.env
-*.local
-coverage/
-.vscode/
+package-lock.json
 
-# Development notes (local only)
+# Build outputs
+dist/
+out/
+*.tsbuildinfo
+
+# Testing
+coverage/
+.nyc_output/
+*.test.js.snap
+
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+*.local
+*.key
+*.pem
+credentials.json
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+.classpath
+
+# Development notes
 COMPLETE.md
 PHASE_*.md
 HACKTRICKS_TEST_CASES.md
+TODO.md
+NOTES.md

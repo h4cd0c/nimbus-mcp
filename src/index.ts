@@ -144,6 +144,12 @@ const TOOLS: Tool[] = [
   {
     name: "help",
     description: "Get comprehensive help about all AWS penetration testing tools with examples and workflow guidance",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: "object",
       properties: {},
@@ -152,6 +158,12 @@ const TOOLS: Tool[] = [
   {
     name: "whoami",
     description: "Identify current AWS identity (user/role), account ID, and ARN using STS GetCallerIdentity",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -166,6 +178,12 @@ const TOOLS: Tool[] = [
   {
     name: "enumerate_ec2_instances",
     description: "List all EC2 instances with security details (public IPs, security groups, IAM roles). Use region: 'all' for all regions or 'common' for top 11 regions.",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -181,6 +199,12 @@ const TOOLS: Tool[] = [
   {
     name: "analyze_s3_security",
     description: "Comprehensive S3 analysis: enumerate all buckets OR scan specific bucket for security issues",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -199,6 +223,12 @@ const TOOLS: Tool[] = [
   {
     name: "analyze_iam_users",
     description: "Enumerate IAM users AND analyze IAM policies for overly permissive permissions",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -217,6 +247,12 @@ const TOOLS: Tool[] = [
   {
     name: "enumerate_iam_roles",
     description: "List all IAM roles with trust relationships and attached policies",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {},
@@ -225,6 +261,12 @@ const TOOLS: Tool[] = [
   {
     name: "enumerate_rds_databases",
     description: "List all RDS database instances and clusters with security configuration",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -239,6 +281,12 @@ const TOOLS: Tool[] = [
   {
     name: "analyze_network_security",
     description: "Enumerate VPCs OR analyze Security Groups for dangerous rules",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -258,6 +306,12 @@ const TOOLS: Tool[] = [
   {
     name: "analyze_lambda_security",
     description: "Enumerate Lambda functions OR identify execution role risks",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -278,6 +332,12 @@ const TOOLS: Tool[] = [
   {
     name: "enumerate_eks_clusters",
     description: "List all EKS clusters with security configuration and network settings",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -292,6 +352,12 @@ const TOOLS: Tool[] = [
   {
     name: "scan_secrets_manager",
     description: "List secrets in Secrets Manager and check for rotation, encryption, and access policies",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -306,6 +372,12 @@ const TOOLS: Tool[] = [
   {
     name: "enumerate_public_resources",
     description: "Find all publicly accessible resources (EC2 with public IPs, S3 buckets, RDS instances) - attack surface mapping",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -320,6 +392,12 @@ const TOOLS: Tool[] = [
   {
     name: "generate_security_report",
     description: "Generate comprehensive security assessment report with all findings (PDF/HTML/CSV export)",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -344,6 +422,12 @@ const TOOLS: Tool[] = [
   {
     name: "analyze_encryption_security",
     description: "KMS keys (rotation, policies) AND DynamoDB tables (encryption, point-in-time recovery, backups)",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -367,6 +451,12 @@ const TOOLS: Tool[] = [
   {
     name: "analyze_api_distribution_security",
     description: "API Gateway (authorization, throttling, logging) AND CloudFront (SSL/TLS, origin access, WAF)",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -385,6 +475,12 @@ const TOOLS: Tool[] = [
   {
     name: "scan_elasticache_security",
     description: "Analyze ElastiCache security: encryption in transit/at rest, auth tokens, subnet groups, security groups",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -399,6 +495,12 @@ const TOOLS: Tool[] = [
   {
     name: "get_guardduty_findings",
     description: "Retrieve GuardDuty security findings (threats detected by AWS threat intelligence)",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -419,6 +521,12 @@ const TOOLS: Tool[] = [
   {
     name: "analyze_messaging_security",
     description: "SNS topics, SQS queues, and Cognito security (encryption, access policies, MFA, password policies)",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -438,6 +546,12 @@ const TOOLS: Tool[] = [
   {
     name: "generate_tra_report",
     description: "Generate comprehensive Threat & Risk Assessment (TRA) security report with findings summary and remediation recommendations",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -467,6 +581,12 @@ const TOOLS: Tool[] = [
   {
     name: "analyze_infrastructure_automation",
     description: "CloudFormation templates (injection risks, IAM permissions) AND EventBridge rules/Lambda persistence mechanisms",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -486,6 +606,12 @@ const TOOLS: Tool[] = [
   {
     name: "enumerate_organizations",
     description: "List AWS Organizations accounts, organizational units, and policies for multi-account enumeration",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {},
@@ -494,6 +620,12 @@ const TOOLS: Tool[] = [
   {
     name: "enumerate_detection_services",
     description: "Enumerate logging and monitoring services: CloudTrail, Config, GuardDuty, CloudWatch, WAF status",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -509,6 +641,12 @@ const TOOLS: Tool[] = [
   {
     name: "analyze_iam_trust_chains",
     description: "Analyze IAM role trust relationships for wildcard principals, cross-account access, and unrestricted service access",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {},
@@ -517,6 +655,12 @@ const TOOLS: Tool[] = [
   {
     name: "detect_permissive_roles",
     description: "Detect IAM roles with excessive permissions (AdministratorAccess, wildcard actions, overly broad resources)",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {},
@@ -526,6 +670,12 @@ const TOOLS: Tool[] = [
   {
     name: "detect_persistence_mechanisms",
     description: "Detect persistence backdoors: Lambda layers, EC2 user data, EventBridge triggers, IAM role modifications, access key rotation",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -540,6 +690,12 @@ const TOOLS: Tool[] = [
   {
     name: "analyze_service_role_chain",
     description: "Analyze lateral movement through service roles: EC2→Lambda→API Gateway→Database chains",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -554,6 +710,12 @@ const TOOLS: Tool[] = [
   {
     name: "analyze_cross_account_movement",
     description: "Analyze potential lateral movement across accounts via cross-account roles, external identities, and organization relationships",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {},
@@ -562,6 +724,12 @@ const TOOLS: Tool[] = [
   {
     name: "detect_mfa_bypass_vectors",
     description: "Identify MFA bypass vectors: console bypass via API, credential leakage, external identity providers without MFA, emergency access keys",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -577,6 +745,12 @@ const TOOLS: Tool[] = [
   {
     name: "analyze_cloudwatch_security",
     description: "Analyze CloudWatch configuration for security monitoring gaps: missing alarms, log groups without encryption, insufficient retention, missing metric filters for security events",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -591,6 +765,12 @@ const TOOLS: Tool[] = [
   {
     name: "scan_ssm_security",
     description: "Analyze AWS Systems Manager security: SSM documents with embedded credentials, parameter store secrets, Session Manager logging, patch compliance",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -605,6 +785,12 @@ const TOOLS: Tool[] = [
   {
     name: "analyze_ec2_metadata_exposure",
     description: "Check EC2 instances for IMDSv1 exposure (SSRF risk), analyze instance profiles, and identify potential credential theft vectors",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -619,6 +805,12 @@ const TOOLS: Tool[] = [
   {
     name: "scan_resource_policies",
     description: "Comprehensive scan of resource-based policies: S3, SQS, SNS, Lambda, KMS, Secrets Manager for overly permissive access patterns",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -638,6 +830,12 @@ const TOOLS: Tool[] = [
   {
     name: "analyze_network_exposure",
     description: "Deep network security analysis: internet-facing resources, VPC peering risks, Transit Gateway exposure, NAT Gateway egress points",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -652,6 +850,12 @@ const TOOLS: Tool[] = [
   {
     name: "detect_data_exfiltration_paths",
     description: "Identify potential data exfiltration vectors: S3 replication rules, Lambda external connections, EC2 egress routes, cross-account data sharing",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -667,6 +871,12 @@ const TOOLS: Tool[] = [
   {
     name: "scan_eks_service_accounts",
     description: "Scan EKS cluster for service account security issues: default SA auto-mount, SAs with cluster-wide permissions, IRSA not configured, SA impersonation, legacy tokens. Returns findings with MITRE ATT&CK mappings and kubectl commands.",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -685,6 +895,12 @@ const TOOLS: Tool[] = [
   {
     name: "hunt_eks_secrets",
     description: "Hunt for secrets in EKS cluster: enumerate K8s secrets, secrets in env vars, AWS Secrets Manager, SSM Parameter Store, ConfigMap secrets, mounted files, container images, git repos. Returns extraction commands and remediation.",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -704,6 +920,12 @@ const TOOLS: Tool[] = [
   {
     name: "scan_all_regions",
     description: "Scan multiple AWS regions for resources. Supports: ec2, lambda, rds, eks, secrets, guardduty, elasticache, vpc. Specify custom regions OR use presets ('common'=11 regions, 'all'=30+ regions).",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -732,6 +954,12 @@ const TOOLS: Tool[] = [
   {
     name: "list_active_regions",
     description: "Discover which AWS regions have resources deployed. Quick scan to identify active regions before deep scanning. Checks EC2, Lambda, RDS presence.",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -751,6 +979,12 @@ const TOOLS: Tool[] = [
   {
     name: "cache_stats",
     description: "View cache statistics: hit/miss ratio, cached keys, memory usage. Useful for monitoring performance.",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: "object",
       properties: {},
@@ -759,6 +993,12 @@ const TOOLS: Tool[] = [
   {
     name: "cache_clear",
     description: "Clear cached data. Use after making AWS changes to get fresh results. Can clear all or specific pattern.",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -773,6 +1013,12 @@ const TOOLS: Tool[] = [
   {
     name: "build_attack_chains",
     description: "Build multi-step attack chains from IAM findings. Identifies complete attack paths from initial access to privilege escalation, lateral movement, and data exfiltration. Maps to MITRE ATT&CK techniques and calculates blast radius.",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -795,6 +1041,12 @@ const TOOLS: Tool[] = [
   {
     name: "analyze_eks_attack_surface",
     description: "Comprehensive EKS security analysis: IRSA (IAM Roles for Service Accounts) abuse, node role credential theft via IMDS, cluster config manipulation, pod security risks, and Kubernetes RBAC to AWS IAM privilege escalation paths.",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -813,6 +1065,12 @@ const TOOLS: Tool[] = [
   {
     name: "detect_privesc_patterns",
     description: "Detect 50+ IAM privilege escalation patterns based on Rhino Security Labs research. Identifies PassRole abuse, policy manipulation, credential access, Lambda abuse, and more with detailed remediation steps.",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -830,6 +1088,12 @@ const TOOLS: Tool[] = [
   {
     name: "analyze_ami_security",
     description: "Analyze AMI security: detect public AMIs, cross-account sharing, unencrypted snapshots, old/vulnerable images, and launch permission misconfigurations",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {
@@ -849,6 +1113,12 @@ const TOOLS: Tool[] = [
   {
     name: "get_audit_logs",
     description: "Retrieve MCP server audit logs for security monitoring and compliance. Shows tool invocations, errors, and security events.",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
       type: "object",
       properties: {

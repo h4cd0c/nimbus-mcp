@@ -1,7 +1,7 @@
 {
   "name": "nimbus-mcp",
-  "version": "1.5.3",
-  "description": "Nimbus - AWS Security Assessment MCP Server - 42 Tools with Full OWASP MCP Security",
+  "version": "1.5.4",
+  "description": "Nimbus - AWS Security Assessment MCP Server - 45 Tools with Full OWASP MCP Security",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
