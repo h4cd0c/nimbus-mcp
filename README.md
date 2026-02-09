@@ -2,12 +2,12 @@
 
 # Nimbus - AWS Security Assessment MCP Server
 
-[![Version](https://img.shields.io/badge/version-1.5.6-blue.svg)](https://github.com/jaikumar3/nimbus-mcp)
-[![Tools](https://img.shields.io/badge/tools-45-green.svg)](https://github.com/jaikumar3/nimbus-mcp)
+[![Version](https://img.shields.io/badge/version-1.5.7-blue.svg)](https://github.com/h4cd0c/nimbus-mcp)
+[![Tools](https://img.shields.io/badge/tools-45-green.svg)](https://github.com/h4cd0c/nimbus-mcp)
 [![Tests](https://img.shields.io/badge/tests-95%20passing-brightgreen.svg)](https://jestjs.io/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 [![AWS SDK](https://img.shields.io/badge/AWS%20SDK-v3-yellow.svg)](https://aws.amazon.com/sdk-for-javascript/)
-[![Status](https://img.shields.io/badge/status-production%20ready-brightgreen.svg)](https://github.com/jaikumar3/nimbus-mcp)
+[![Status](https://img.shields.io/badge/status-production%20ready-brightgreen.svg)](https://github.com/h4cd0c/nimbus-mcp)
 [![Tests](https://img.shields.io/badge/tests-Jest-green.svg)](https://jestjs.io/)
 
 **Enterprise-grade AWS security assessment toolkit with Attack Chain Builder, 50+ Privesc Patterns & Multi-Region Scanning**
@@ -133,7 +133,7 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/jaikumar3/nimbus-mcp.git
+git clone https://github.com/h4cd0c/nimbus-mcp.git
 cd nimbus-mcp
 
 # Install dependencies
@@ -724,7 +724,7 @@ Testing activities must not:
 
 **MIT License** - See [LICENSE](LICENSE) file for details
 
-Copyright (c) 2026 jaikumar3
+Copyright (c) 2026 h4cd0c
 
 ---
 
@@ -761,8 +761,8 @@ If this tool helps your security assessments, please:
 
 **Built with:** TypeScript • AWS SDK v3 • MCP SDK v1.0.4
 
-**Author:** [jaikumar3](https://github.com/jaikumar3)  
-**Repository:** [nimbus-mcp](https://github.com/jaikumar3/nimbus-mcp)
+**Author:** [h4cd0c](https://github.com/h4cd0c)  
+**Repository:** [nimbus-mcp](https://github.com/h4cd0c/nimbus-mcp)
 
 ---
 
