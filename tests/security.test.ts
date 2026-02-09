@@ -14,14 +14,14 @@ import { describe, it, expect } from '@jest/globals';
 describe('OWASP MCP-01: Tool Naming and Identification', () => {
   it('should use lowercase snake_case for all tool names', () => {
     const validNames = [
-      'enumerate_ec2_instances',
-      'analyze_s3_security',
-      'detect_privesc_patterns',
-      'whoami',
+      'aws_enumerate_ec2_instances',
+      'aws_analyze_s3_security',
+      'aws_detect_privesc_patterns',
+      'aws_whoami',
     ];
     
     validNames.forEach(name => {
-      expect(name).toMatch(/^[a-z][a-z0-9_]*$/);
+      expect(name).toMatch(/^aws_[a-z][a-z0-9_]*$/);
     });
   });
 
@@ -32,19 +32,20 @@ describe('OWASP MCP-01: Tool Naming and Identification', () => {
       'enumerate EC2',     // spaces
       '2enumerate',        // starts with number
       'enumerate_EC2',     // mixed case
+      'enumerate_ec2',     // missing aws_ prefix
     ];
     
     invalidNames.forEach(name => {
-      expect(name).not.toMatch(/^[a-z][a-z0-9_]*$/);
+      expect(name).not.toMatch(/^aws_[a-z][a-z0-9_]*$/);
     });
   });
 
   it('should have descriptive multi-word names', () => {
     const descriptiveNames = [
-      'enumerate_public_resources',
-      'analyze_iam_trust_chains',
-      'detect_mfa_bypass_vectors',
-      'build_attack_chains',
+      'aws_enumerate_public_resources',
+      'aws_analyze_iam_trust_chains',
+      'aws_detect_mfa_bypass_vectors',
+      'aws_build_attack_chains',
     ];
     
     descriptiveNames.forEach(name => {
@@ -55,9 +56,9 @@ describe('OWASP MCP-01: Tool Naming and Identification', () => {
   it('should avoid generic or ambiguous names', () => {
     const ambiguousNames = ['scan', 'check', 'test', 'run'];
     const goodNames = [
-      'scan_secrets_manager',
-      'analyze_network_security',
-      'enumerate_eks_clusters',
+      'aws_scan_secrets_manager',
+      'aws_analyze_network_security',
+      'aws_enumerate_eks_clusters',
     ];
     
     goodNames.forEach(name => {
@@ -72,8 +73,8 @@ describe('OWASP MCP-01: Tool Naming and Identification', () => {
       'build', 'hunt', 'list', 'get',
     ];
     
-    const toolName = 'enumerate_ec2_instances';
-    const prefix = toolName.split('_')[0];
+    const toolName = 'aws_enumerate_ec2_instances';
+    const prefix = toolName.split('_')[1]; // Skip aws_ prefix
     expect(validPrefixes).toContain(prefix);
   });
 });
@@ -183,7 +184,7 @@ describe('OWASP MCP-03: Input Validation', () => {
 
 describe('OWASP MCP-05: Security Property Declaration', () => {
   const readOnlyTool = {
-    name: 'enumerate_ec2_instances',
+    name: 'aws_enumerate_ec2_instances',
     annotations: {
       readOnly: true,
       destructive: false,
@@ -193,7 +194,7 @@ describe('OWASP MCP-05: Security Property Declaration', () => {
   };
 
   const utilityTool = {
-    name: 'help',
+    name: 'aws_help',
     annotations: {
       readOnly: true,
       destructive: false,
@@ -372,7 +373,7 @@ describe('Audit Logging', () => {
   it('should log security-relevant operations', () => {
     const auditLog = {
       timestamp: new Date().toISOString(),
-      tool: 'enumerate_ec2_instances',
+      tool: 'aws_enumerate_ec2_instances',
       user: 'security-auditor',
       region: 'us-east-1',
       action: 'enumerate',
@@ -385,7 +386,7 @@ describe('Audit Logging', () => {
 
   it('should include relevant context in logs', () => {
     const logEntry = {
-      tool: 'analyze_s3_security',
+      tool: 'aws_analyze_s3_security',
       parameters: { bucketName: 'example-bucket' },
       result: 'success',
     };
@@ -397,7 +398,7 @@ describe('Audit Logging', () => {
 
   it('should never log credentials', () => {
     const logEntry = {
-      tool: 'whoami',
+      tool: 'aws_whoami',
       identity: 'arn:aws:iam::123456789012:user/auditor',
       // credentials should NEVER be here
     };
@@ -411,8 +412,8 @@ describe('Audit Logging', () => {
 describe('Tool Categorization Security', () => {
   it('should categorize tools by risk level', () => {
     const categories = {
-      readOnly: ['enumerate_ec2_instances', 'analyze_s3_security'],
-      lowRisk: ['whoami', 'help'],
+      readOnly: ['aws_enumerate_ec2_instances', 'aws_analyze_s3_security'],
+      lowRisk: ['aws_whoami', 'aws_help'],
       highRisk: [], // No destructive operations in this pentest tool
     };
     

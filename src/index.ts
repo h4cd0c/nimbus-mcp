@@ -6,6 +6,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
   Tool,
+  CompleteRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
 // AWS SDK imports - Phase 1
@@ -48,6 +49,11 @@ import * as fs from "fs";
 
 // Utility imports - Caching, Rate Limiting, Retry Logic, Security
 import { cache, withRetry, safeApiCall, rateLimiters, validateRegion, validateInput, auditLogger, withAudit } from "./utils.js";
+
+// Error Handling & Logging Infrastructure (v1.5.7)
+import { logger, performanceTracker } from "./logging.js";
+import { normalizeError, MCPError, ValidationError, formatErrorMarkdown, formatErrorJSON } from "./errors.js";
+import { retry, retryWithTimeout } from "./retry.js";
 
 // Initialize AWS clients with default credentials
 const DEFAULT_REGION = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "us-east-1";
@@ -126,11 +132,12 @@ const cloudwatchClient = new CloudWatchClient({ region: DEFAULT_REGION });
 const server = new Server(
   {
     name: "nimbus-mcp",
-    version: "1.4.2",
+    version: "1.5.6",
   },
   {
     capabilities: {
       tools: {},
+      completions: {},
     },
   }
 );
@@ -142,7 +149,7 @@ const server = new Server(
 const TOOLS: Tool[] = [
   // ========== UTILITY TOOLS ==========
   {
-    name: "help",
+    name: "aws_help",
     description: "Get comprehensive help about all AWS penetration testing tools with examples and workflow guidance",
     annotations: {
       readOnlyHint: true,
@@ -156,7 +163,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "whoami",
+    name: "aws_whoami",
     description: "Identify current AWS identity (user/role), account ID, and ARN using STS GetCallerIdentity",
     annotations: {
       readOnlyHint: true,
@@ -176,7 +183,7 @@ const TOOLS: Tool[] = [
   },
   // ========== ENUMERATION & DISCOVERY TOOLS ==========
   {
-    name: "enumerate_ec2_instances",
+    name: "aws_enumerate_ec2_instances",
     description: "List all EC2 instances with security details (public IPs, security groups, IAM roles). Use region: 'all' for all regions or 'common' for top 11 regions.",
     annotations: {
       readOnlyHint: true,
@@ -191,13 +198,18 @@ const TOOLS: Tool[] = [
           type: "string",
           description: "AWS region to scan (e.g., us-east-1), 'all' for all 28 regions, 'common' for top 11 regions",
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
       required: ["region"],
     },
   },
   // ========== SECURITY ANALYSIS & SCANNING TOOLS ==========
   {
-    name: "analyze_s3_security",
+    name: "aws_analyze_s3_security",
     description: "Comprehensive S3 analysis: enumerate all buckets OR scan specific bucket for security issues",
     annotations: {
       readOnlyHint: true,
@@ -217,11 +229,16 @@ const TOOLS: Tool[] = [
           description: "Mode: 'enumerate' (list buckets), 'security' (analyze), 'both' (default)",
           enum: ["enumerate", "security", "both"],
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
     },
   },
   {
-    name: "analyze_iam_users",
+    name: "aws_analyze_iam_users",
     description: "Enumerate IAM users AND analyze IAM policies for overly permissive permissions",
     annotations: {
       readOnlyHint: true,
@@ -241,11 +258,16 @@ const TOOLS: Tool[] = [
           description: "Mode: 'enumerate' (list users), 'policies' (analyze), 'both' (default)",
           enum: ["enumerate", "policies", "both"],
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
     },
   },
   {
-    name: "enumerate_iam_roles",
+    name: "aws_enumerate_iam_roles",
     description: "List all IAM roles with trust relationships and attached policies",
     annotations: {
       readOnlyHint: true,
@@ -255,11 +277,17 @@ const TOOLS: Tool[] = [
     },
     inputSchema: {
       type: "object",
-      properties: {},
+      properties: {
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
+      },
     },
   },
   {
-    name: "enumerate_rds_databases",
+    name: "aws_enumerate_rds_databases",
     description: "List all RDS database instances and clusters with security configuration",
     annotations: {
       readOnlyHint: true,
@@ -274,12 +302,17 @@ const TOOLS: Tool[] = [
           type: "string",
           description: "AWS region to scan (e.g., us-east-1)",
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
       required: ["region"],
     },
   },
   {
-    name: "analyze_network_security",
+    name: "aws_analyze_network_security",
     description: "Enumerate VPCs OR analyze Security Groups for dangerous rules",
     annotations: {
       readOnlyHint: true,
@@ -299,12 +332,17 @@ const TOOLS: Tool[] = [
           description: "Mode: 'vpcs' (VPCs), 'security_groups' (SGs), 'both' (default)",
           enum: ["vpcs", "security_groups", "both"],
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
       required: ["region"],
     },
   },
   {
-    name: "analyze_lambda_security",
+    name: "aws_analyze_lambda_security",
     description: "Enumerate Lambda functions OR identify execution role risks",
     annotations: {
       readOnlyHint: true,
@@ -324,13 +362,18 @@ const TOOLS: Tool[] = [
           description: "Mode: 'enumerate' (list), 'roles' (analyze), 'both' (default)",
           enum: ["enumerate", "roles", "both"],
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
       required: ["region"],
     },
   },
   // ========== NETWORK & INFRASTRUCTURE SECURITY ==========
   {
-    name: "enumerate_eks_clusters",
+    name: "aws_enumerate_eks_clusters",
     description: "List all EKS clusters with security configuration and network settings",
     annotations: {
       readOnlyHint: true,
@@ -345,12 +388,17 @@ const TOOLS: Tool[] = [
           type: "string",
           description: "AWS region to scan",
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
       required: ["region"],
     },
   },
   {
-    name: "scan_secrets_manager",
+    name: "aws_scan_secrets_manager",
     description: "List secrets in Secrets Manager and check for rotation, encryption, and access policies",
     annotations: {
       readOnlyHint: true,
@@ -365,12 +413,17 @@ const TOOLS: Tool[] = [
           type: "string",
           description: "AWS region to scan",
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
       required: ["region"],
     },
   },
   {
-    name: "enumerate_public_resources",
+    name: "aws_enumerate_public_resources",
     description: "Find all publicly accessible resources (EC2 with public IPs, S3 buckets, RDS instances) - attack surface mapping",
     annotations: {
       readOnlyHint: true,
@@ -385,12 +438,17 @@ const TOOLS: Tool[] = [
           type: "string",
           description: "AWS region to scan",
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
       required: ["region"],
     },
   },
   {
-    name: "generate_security_report",
+    name: "aws_generate_security_report",
     description: "Generate comprehensive security assessment report with all findings (PDF/HTML/CSV export)",
     annotations: {
       readOnlyHint: true,
@@ -420,7 +478,7 @@ const TOOLS: Tool[] = [
   },
   // ========== DATA & ENCRYPTION SECURITY ==========
   {
-    name: "analyze_encryption_security",
+    name: "aws_analyze_encryption_security",
     description: "KMS keys (rotation, policies) AND DynamoDB tables (encryption, point-in-time recovery, backups)",
     annotations: {
       readOnlyHint: true,
@@ -444,12 +502,17 @@ const TOOLS: Tool[] = [
           type: "string",
           description: "Optional: specific DynamoDB table name",
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
       required: ["region"],
     },
   },
   {
-    name: "analyze_api_distribution_security",
+    name: "aws_analyze_api_distribution_security",
     description: "API Gateway (authorization, throttling, logging) AND CloudFront (SSL/TLS, origin access, WAF)",
     annotations: {
       readOnlyHint: true,
@@ -469,11 +532,16 @@ const TOOLS: Tool[] = [
           description: "Mode: 'api_gateway', 'cloudfront', 'both' (default)",
           enum: ["api_gateway", "cloudfront", "both"],
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
     },
   },
   {
-    name: "scan_elasticache_security",
+    name: "aws_scan_elasticache_security",
     description: "Analyze ElastiCache security: encryption in transit/at rest, auth tokens, subnet groups, security groups",
     annotations: {
       readOnlyHint: true,
@@ -488,12 +556,17 @@ const TOOLS: Tool[] = [
           type: "string",
           description: "AWS region to scan",
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
       required: ["region"],
     },
   },
   {
-    name: "get_guardduty_findings",
+    name: "aws_get_guardduty_findings",
     description: "Retrieve GuardDuty security findings (threats detected by AWS threat intelligence)",
     annotations: {
       readOnlyHint: true,
@@ -513,13 +586,18 @@ const TOOLS: Tool[] = [
           description: "Filter by severity: LOW, MEDIUM, HIGH, or CRITICAL (default: all)",
           enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
       required: ["region"],
     },
   },
   // ========== MESSAGING & APPLICATION SECURITY ==========
   {
-    name: "analyze_messaging_security",
+    name: "aws_analyze_messaging_security",
     description: "SNS topics, SQS queues, and Cognito security (encryption, access policies, MFA, password policies)",
     annotations: {
       readOnlyHint: true,
@@ -539,12 +617,17 @@ const TOOLS: Tool[] = [
           description: "Mode: 'sns', 'sqs', 'cognito', 'all' (default)",
           enum: ["sns", "sqs", "cognito", "all"],
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
       required: ["region"],
     },
   },
   {
-    name: "generate_tra_report",
+    name: "aws_generate_tra_report",
     description: "Generate comprehensive Threat & Risk Assessment (TRA) security report with findings summary and remediation recommendations",
     annotations: {
       readOnlyHint: true,
@@ -579,7 +662,7 @@ const TOOLS: Tool[] = [
   },
   // ========== PHASE 1: INFRASTRUCTURE ANALYSIS TOOLS ==========
   {
-    name: "analyze_infrastructure_automation",
+    name: "aws_analyze_infrastructure_automation",
     description: "CloudFormation templates (injection risks, IAM permissions) AND EventBridge rules/Lambda persistence mechanisms",
     annotations: {
       readOnlyHint: true,
@@ -599,12 +682,17 @@ const TOOLS: Tool[] = [
           description: "Mode: 'cloudformation', 'eventbridge', 'both' (default)",
           enum: ["cloudformation", "eventbridge", "both"],
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
       required: ["region"],
     },
   },
   {
-    name: "enumerate_organizations",
+    name: "aws_enumerate_organizations",
     description: "List AWS Organizations accounts, organizational units, and policies for multi-account enumeration",
     annotations: {
       readOnlyHint: true,
@@ -614,11 +702,17 @@ const TOOLS: Tool[] = [
     },
     inputSchema: {
       type: "object",
-      properties: {},
+      properties: {
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
+      },
     },
   },
   {
-    name: "enumerate_detection_services",
+    name: "aws_enumerate_detection_services",
     description: "Enumerate logging and monitoring services: CloudTrail, Config, GuardDuty, CloudWatch, WAF status",
     annotations: {
       readOnlyHint: true,
@@ -633,13 +727,18 @@ const TOOLS: Tool[] = [
           type: "string",
           description: "AWS region to scan",
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
       required: ["region"],
     },
   },
   // ========== PHASE 2: ADVANCED PERMISSION ANALYSIS TOOLS ==========
   {
-    name: "analyze_iam_trust_chains",
+    name: "aws_analyze_iam_trust_chains",
     description: "Analyze IAM role trust relationships for wildcard principals, cross-account access, and unrestricted service access",
     annotations: {
       readOnlyHint: true,
@@ -649,11 +748,17 @@ const TOOLS: Tool[] = [
     },
     inputSchema: {
       type: "object",
-      properties: {},
+      properties: {
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
+      },
     },
   },
   {
-    name: "detect_permissive_roles",
+    name: "aws_detect_permissive_roles",
     description: "Detect IAM roles with excessive permissions (AdministratorAccess, wildcard actions, overly broad resources)",
     annotations: {
       readOnlyHint: true,
@@ -663,12 +768,18 @@ const TOOLS: Tool[] = [
     },
     inputSchema: {
       type: "object",
-      properties: {},
+      properties: {
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
+      },
     },
   },
   // ========== PHASE 3: PERSISTENCE & EVASION DETECTION TOOLS ==========
   {
-    name: "detect_persistence_mechanisms",
+    name: "aws_detect_persistence_mechanisms",
     description: "Detect persistence backdoors: Lambda layers, EC2 user data, EventBridge triggers, IAM role modifications, access key rotation",
     annotations: {
       readOnlyHint: true,
@@ -683,12 +794,17 @@ const TOOLS: Tool[] = [
           type: "string",
           description: "AWS region to scan",
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
       required: ["region"],
     },
   },
   {
-    name: "analyze_service_role_chain",
+    name: "aws_analyze_service_role_chain",
     description: "Analyze lateral movement through service roles: EC2→Lambda→API Gateway→Database chains",
     annotations: {
       readOnlyHint: true,
@@ -703,12 +819,17 @@ const TOOLS: Tool[] = [
           type: "string",
           description: "AWS region to analyze",
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
       required: ["region"],
     },
   },
   {
-    name: "analyze_cross_account_movement",
+    name: "aws_analyze_cross_account_movement",
     description: "Analyze potential lateral movement across accounts via cross-account roles, external identities, and organization relationships",
     annotations: {
       readOnlyHint: true,
@@ -718,11 +839,17 @@ const TOOLS: Tool[] = [
     },
     inputSchema: {
       type: "object",
-      properties: {},
+      properties: {
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
+      },
     },
   },
   {
-    name: "detect_mfa_bypass_vectors",
+    name: "aws_detect_mfa_bypass_vectors",
     description: "Identify MFA bypass vectors: console bypass via API, credential leakage, external identity providers without MFA, emergency access keys",
     annotations: {
       readOnlyHint: true,
@@ -737,13 +864,18 @@ const TOOLS: Tool[] = [
           type: "string",
           description: "AWS region to scan",
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
       required: ["region"],
     },
   },
   // ========== NEW SECURITY TOOLS ==========
   {
-    name: "analyze_cloudwatch_security",
+    name: "aws_analyze_cloudwatch_security",
     description: "Analyze CloudWatch configuration for security monitoring gaps: missing alarms, log groups without encryption, insufficient retention, missing metric filters for security events",
     annotations: {
       readOnlyHint: true,
@@ -758,12 +890,17 @@ const TOOLS: Tool[] = [
           type: "string",
           description: "AWS region to scan",
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
       required: ["region"],
     },
   },
   {
-    name: "scan_ssm_security",
+    name: "aws_scan_ssm_security",
     description: "Analyze AWS Systems Manager security: SSM documents with embedded credentials, parameter store secrets, Session Manager logging, patch compliance",
     annotations: {
       readOnlyHint: true,
@@ -778,12 +915,17 @@ const TOOLS: Tool[] = [
           type: "string",
           description: "AWS region to scan",
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
       required: ["region"],
     },
   },
   {
-    name: "analyze_ec2_metadata_exposure",
+    name: "aws_analyze_ec2_metadata_exposure",
     description: "Check EC2 instances for IMDSv1 exposure (SSRF risk), analyze instance profiles, and identify potential credential theft vectors",
     annotations: {
       readOnlyHint: true,
@@ -798,12 +940,17 @@ const TOOLS: Tool[] = [
           type: "string",
           description: "AWS region to scan",
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
       required: ["region"],
     },
   },
   {
-    name: "scan_resource_policies",
+    name: "aws_scan_resource_policies",
     description: "Comprehensive scan of resource-based policies: S3, SQS, SNS, Lambda, KMS, Secrets Manager for overly permissive access patterns",
     annotations: {
       readOnlyHint: true,
@@ -823,12 +970,17 @@ const TOOLS: Tool[] = [
           enum: ["s3", "sqs", "sns", "lambda", "kms", "secrets", "all"],
           description: "Type of resource policies to scan (default: all)",
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
       required: ["region"],
     },
   },
   {
-    name: "analyze_network_exposure",
+    name: "aws_analyze_network_exposure",
     description: "Deep network security analysis: internet-facing resources, VPC peering risks, Transit Gateway exposure, NAT Gateway egress points",
     annotations: {
       readOnlyHint: true,
@@ -843,12 +995,17 @@ const TOOLS: Tool[] = [
           type: "string",
           description: "AWS region to scan",
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
       required: ["region"],
     },
   },
   {
-    name: "detect_data_exfiltration_paths",
+    name: "aws_detect_data_exfiltration_paths",
     description: "Identify potential data exfiltration vectors: S3 replication rules, Lambda external connections, EC2 egress routes, cross-account data sharing",
     annotations: {
       readOnlyHint: true,
@@ -863,13 +1020,18 @@ const TOOLS: Tool[] = [
           type: "string",
           description: "AWS region to scan",
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
       required: ["region"],
     },
   },
   // ========== KUBERNETES SECURITY TOOLS ==========
   {
-    name: "scan_eks_service_accounts",
+    name: "aws_scan_eks_service_accounts",
     description: "Scan EKS cluster for service account security issues: default SA auto-mount, SAs with cluster-wide permissions, IRSA not configured, SA impersonation, legacy tokens. Returns findings with MITRE ATT&CK mappings and kubectl commands.",
     annotations: {
       readOnlyHint: true,
@@ -888,12 +1050,17 @@ const TOOLS: Tool[] = [
           type: "string",
           description: "EKS cluster name",
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
       required: ["region", "clusterName"],
     },
   },
   {
-    name: "hunt_eks_secrets",
+    name: "aws_hunt_eks_secrets",
     description: "Hunt for secrets in EKS cluster: enumerate K8s secrets, secrets in env vars, AWS Secrets Manager, SSM Parameter Store, ConfigMap secrets, mounted files, container images, git repos. Returns extraction commands and remediation.",
     annotations: {
       readOnlyHint: true,
@@ -912,13 +1079,18 @@ const TOOLS: Tool[] = [
           type: "string",
           description: "EKS cluster name",
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
       required: ["region", "clusterName"],
     },
   },
   // ========== MULTI-REGION SCANNING TOOLS ==========
   {
-    name: "scan_all_regions",
+    name: "aws_scan_all_regions",
     description: "Scan multiple AWS regions for resources. Supports: ec2, lambda, rds, eks, secrets, guardduty, elasticache, vpc. Specify custom regions OR use presets ('common'=11 regions, 'all'=30+ regions).",
     annotations: {
       readOnlyHint: true,
@@ -947,12 +1119,17 @@ const TOOLS: Tool[] = [
           type: "number",
           description: "Number of parallel region scans (default: 5, max: 10)",
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
       required: ["resourceType"],
     },
   },
   {
-    name: "list_active_regions",
+    name: "aws_list_active_regions",
     description: "Discover which AWS regions have resources deployed. Quick scan to identify active regions before deep scanning. Checks EC2, Lambda, RDS presence.",
     annotations: {
       readOnlyHint: true,
@@ -972,12 +1149,17 @@ const TOOLS: Tool[] = [
           description: "Preset scan mode (ignored if 'regions' is provided): 'common' (11 regions) or 'all' (30+ regions)",
           enum: ["common", "all"],
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
     },
   },
   // ========== CACHE MANAGEMENT TOOLS ==========
   {
-    name: "cache_stats",
+    name: "aws_cache_stats",
     description: "View cache statistics: hit/miss ratio, cached keys, memory usage. Useful for monitoring performance.",
     annotations: {
       readOnlyHint: true,
@@ -987,11 +1169,17 @@ const TOOLS: Tool[] = [
     },
     inputSchema: {
       type: "object",
-      properties: {},
+      properties: {
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
+      },
     },
   },
   {
-    name: "cache_clear",
+    name: "aws_cache_clear",
     description: "Clear cached data. Use after making AWS changes to get fresh results. Can clear all or specific pattern.",
     annotations: {
       readOnlyHint: true,
@@ -1006,12 +1194,17 @@ const TOOLS: Tool[] = [
           type: "string",
           description: "Optional: Clear only keys matching this pattern (e.g., 'ec2', 's3', 'us-east-1'). If omitted, clears all.",
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
     },
   },
   // ========== ATTACK CHAIN & ADVANCED ANALYSIS TOOLS ==========
   {
-    name: "build_attack_chains",
+    name: "aws_build_attack_chains",
     description: "Build multi-step attack chains from IAM findings. Identifies complete attack paths from initial access to privilege escalation, lateral movement, and data exfiltration. Maps to MITRE ATT&CK techniques and calculates blast radius.",
     annotations: {
       readOnlyHint: true,
@@ -1035,11 +1228,16 @@ const TOOLS: Tool[] = [
           enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
           description: "Minimum severity to include (default: HIGH)",
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
     },
   },
   {
-    name: "analyze_eks_attack_surface",
+    name: "aws_analyze_eks_attack_surface",
     description: "Comprehensive EKS security analysis: IRSA (IAM Roles for Service Accounts) abuse, node role credential theft via IMDS, cluster config manipulation, pod security risks, and Kubernetes RBAC to AWS IAM privilege escalation paths.",
     annotations: {
       readOnlyHint: true,
@@ -1058,12 +1256,17 @@ const TOOLS: Tool[] = [
           type: "string",
           description: "Optional: Specific EKS cluster to analyze (analyzes all if omitted)",
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
       required: ["region"],
     },
   },
   {
-    name: "detect_privesc_patterns",
+    name: "aws_detect_privesc_patterns",
     description: "Detect 50+ IAM privilege escalation patterns based on Rhino Security Labs research. Identifies PassRole abuse, policy manipulation, credential access, Lambda abuse, and more with detailed remediation steps.",
     annotations: {
       readOnlyHint: true,
@@ -1082,11 +1285,16 @@ const TOOLS: Tool[] = [
           type: "boolean",
           description: "Include detailed remediation steps (default: true)",
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
     },
   },
   {
-    name: "analyze_ami_security",
+    name: "aws_analyze_ami_security",
     description: "Analyze AMI security: detect public AMIs, cross-account sharing, unencrypted snapshots, old/vulnerable images, and launch permission misconfigurations",
     annotations: {
       readOnlyHint: true,
@@ -1105,13 +1313,18 @@ const TOOLS: Tool[] = [
           type: "boolean",
           description: "Include AWS-managed AMIs in analysis (default: false)",
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
       required: ["region"],
     },
   },
   // ========== AUDIT & TELEMETRY TOOLS (OWASP MCP08) ==========
   {
-    name: "get_audit_logs",
+    name: "aws_get_audit_logs",
     description: "Retrieve MCP server audit logs for security monitoring and compliance. Shows tool invocations, errors, and security events.",
     annotations: {
       readOnlyHint: true,
@@ -1135,19 +1348,175 @@ const TOOLS: Tool[] = [
           type: "number",
           description: "Maximum number of log entries to return (default: 50)",
         },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          enum: ["markdown", "json"],
+        },
       },
     },
   },
 ];
+
+// ========== RESPONSE FORMATTING HELPERS ==========
+/**
+ * Format response based on requested format (markdown or json)
+ * @param data - The data to format (can be markdown string or structured object)
+ * @param format - Requested format ('markdown' or 'json')
+ * @param toolName - Name of the tool for metadata
+ * @returns Formatted response string
+ */
+function formatResponse(data: any, format: string | undefined, toolName: string): string {
+  const outputFormat = format || 'markdown';
+  
+  if (outputFormat === 'json') {
+    // If data is already a string (markdown), wrap it in a JSON structure
+    if (typeof data === 'string') {
+      return JSON.stringify({
+        tool: toolName,
+        format: 'json',
+        timestamp: new Date().toISOString(),
+        data: {
+          markdownOutput: data,
+          note: "This tool currently returns markdown output. JSON schema support coming soon."
+        }
+      }, null, 2);
+    }
+    // If data is already an object, stringify it
+    return JSON.stringify({
+      tool: toolName,
+      format: 'json',
+      timestamp: new Date().toISOString(),
+      data: data
+    }, null, 2);
+  }
+  
+  // Default to markdown (or if data is already markdown string)
+  if (typeof data === 'string') {
+    return data;
+  }
+  
+  // If data is an object but markdown format requested, convert to markdown
+  return JSON.stringify(data, null, 2);
+}
 
 // Tool handlers
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: TOOLS,
 }));
 
+// Completion handler - provides intelligent auto-suggestions
+server.setRequestHandler(CompleteRequestSchema, async (request) => {
+  const { ref, argument } = request.params;
+  
+  // Region completions
+  if (argument.name === "region" || argument.name === "regions") {
+    const partial = argument.value.toLowerCase();
+    const suggestions = [
+      ...AWS_REGIONS.filter(r => r.startsWith(partial)),
+      ...["all", "common"].filter(s => s.startsWith(partial))
+    ];
+    
+    return {
+      completion: {
+        values: suggestions.slice(0, 20), // Limit to 20
+        total: suggestions.length,
+        hasMore: suggestions.length > 20
+      }
+    };
+  }
+  
+  // Resource type completions
+  if (argument.name === "resourceType") {
+    const partial = argument.value.toLowerCase();
+    const types = ["ec2", "lambda", "rds", "eks", "secrets", "guardduty", "elasticache", "vpc"];
+    const suggestions = types.filter(t => t.startsWith(partial));
+    
+    return {
+      completion: {
+        values: suggestions,
+        total: suggestions.length,
+        hasMore: false
+      }
+    };
+  }
+  
+  // Format completions
+  if (argument.name === "format") {
+    const partial = argument.value.toLowerCase();
+    const formats = ["markdown", "json", "html", "pdf", "csv"];
+    const suggestions = formats.filter(f => f.startsWith(partial));
+    
+    return {
+      completion: {
+        values: suggestions,
+        total: suggestions.length,
+        hasMore: false
+      }
+    };
+  }
+  
+  // Scan mode completions
+  if (argument.name === "scanMode") {
+    const partial = argument.value.toLowerCase();
+    const modes = ["common", "all"];
+    const suggestions = modes.filter(m => m.startsWith(partial));
+    
+    return {
+      completion: {
+        values: suggestions,
+        total: suggestions.length,
+        hasMore: false
+      }
+    };
+  }
+  
+  // Severity completions
+  if (argument.name === "severity") {
+    const partial = argument.value.toUpperCase();
+    const severities = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
+    const suggestions = severities.filter(s => s.startsWith(partial));
+    
+    return {
+      completion: {
+        values: suggestions,
+        total: suggestions.length,
+        hasMore: false
+      }
+    };
+  }
+  
+  // Framework completions
+  if (argument.name === "framework") {
+    const partial = argument.value.toLowerCase();
+    const frameworks = ["nist", "iso27001", "pci-dss", "hipaa", "soc2", "cis"];
+    const suggestions = frameworks.filter(f => f.startsWith(partial));
+    
+    return {
+      completion: {
+        values: suggestions,
+        total: suggestions.length,
+        hasMore: false
+      }
+    };
+  }
+  
+  // No suggestions for this argument
+  return {
+    completion: {
+      values: [],
+      total: 0,
+      hasMore: false
+    }
+  };
+});
+
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
+  // Start performance tracking
+  const trackingId = performanceTracker.start(name);
+  
   // OWASP MCP08: Log tool invocation for audit
   auditLogger.logToolCall({
     level: 'INFO',
@@ -1155,6 +1524,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     action: 'INVOKED',
     input: args as Record<string, any>,
   });
+  
+  logger.info(`Tool invoked: ${name}`, { args }, name);
 
   // ========== OWASP MCP05: Comprehensive Input Validation ==========
   // Helper to validate all common input types
@@ -1162,7 +1533,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     region: (val: any, allowSpecial = false) => validateRegion(val as string | undefined, allowSpecial),
     regionRequired: (val: any, allowSpecial = false) => {
       const r = validateRegion(val as string | undefined, allowSpecial);
-      if (!r) throw new Error("region is required");
+      if (!r) throw new ValidationError("region is required", { provided: val });
       return r;
     },
     bucketName: (val: any) => validateInput(val as string | undefined, {
@@ -1182,7 +1553,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         pattern: /^[a-zA-Z][a-zA-Z0-9_-]*$/,
         patternName: 'EKS cluster name',
       });
-      if (!c) throw new Error("clusterName is required");
+      if (!c) throw new ValidationError("clusterName is required", { provided: val });
       return c;
     },
     arn: (val: any) => validateInput(val as string | undefined, {
@@ -1216,116 +1587,157 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // Prevent path traversal attacks
       const path = validateInput(val as string | undefined, { maxLength: 500 });
       if (path && (path.includes('..') || path.includes('\0'))) {
-        throw new Error("Invalid file path: path traversal detected");
+        throw new ValidationError("Invalid file path: path traversal detected", { path });
       }
       return path;
     },
     genericString: (val: any, maxLen = 200) => validateInput(val as string | undefined, { maxLength: maxLen }),
+    outputFormat: (val: any) => validateInput(val as string | undefined, {
+      allowedValues: ['markdown', 'json'],
+    }) || 'markdown', // Default to markdown if not specified
   };
 
   try {
     // ========== UTILITY TOOLS ==========
     switch (name) {
-      case "help":
-        return { content: [{ type: "text", text: getHelpText() }] };
+      case "aws_help": {
+        const format = v.outputFormat(args?.format);
+        const result = getHelpText();
+        performanceTracker.end(trackingId, true);
+        logger.info(`Tool completed successfully: ${name}`, { format }, name);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
+      }
 
-      case "whoami": {
+      case "aws_whoami": {
         const region = v.region(args?.region);
-        return { content: [{ type: "text", text: await whoami(region) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await whoami(region);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
       // ========== ENUMERATION & DISCOVERY TOOLS ==========
-      case "enumerate_ec2_instances": {
+      case "aws_enumerate_ec2_instances": {
         const region = v.regionRequired(args?.region, true);
-        return { content: [{ type: "text", text: await enumerateEC2InstancesMultiRegion(region) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await enumerateEC2InstancesMultiRegion(region);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "analyze_s3_security": {
+      case "aws_analyze_s3_security": {
         const bucketName = v.bucketName(args?.bucketName);
         const scanMode = v.scanMode(args?.scanMode, ['quick', 'deep', 'compliance']);
-        return { content: [{ type: "text", text: await analyzeS3Security(bucketName, scanMode) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await analyzeS3Security(bucketName, scanMode);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "analyze_iam_users": {
+      case "aws_analyze_iam_users": {
         const policyArn = v.arn(args?.policyArn);
         const scanMode = v.scanMode(args?.scanMode, ['users', 'policies', 'both']);
-        return { content: [{ type: "text", text: await analyzeIAMUsers(policyArn, scanMode) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await analyzeIAMUsers(policyArn, scanMode);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "enumerate_iam_roles":
-        return { content: [{ type: "text", text: await enumerateIAMRoles() }] };
+      case "aws_enumerate_iam_roles": {
+        const format = v.outputFormat(args?.format);
+        const result = await enumerateIAMRoles();
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
+      }
 
-      case "enumerate_rds_databases": {
+      case "aws_enumerate_rds_databases": {
         const region = v.regionRequired(args?.region, true);
-        return { content: [{ type: "text", text: await enumerateRDSDatabasesMultiRegion(region) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await enumerateRDSDatabasesMultiRegion(region);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "analyze_network_security": {
+      case "aws_analyze_network_security": {
         const region = v.regionRequired(args?.region, true);
         const scanMode = v.scanMode(args?.scanMode, ['security_groups', 'nacls', 'both']);
-        return { content: [{ type: "text", text: await analyzeNetworkSecurityMultiRegion(region, scanMode) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await analyzeNetworkSecurityMultiRegion(region, scanMode);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "analyze_lambda_security": {
+      case "aws_analyze_lambda_security": {
         const region = v.regionRequired(args?.region, true);
         const scanMode = v.scanMode(args?.scanMode, ['enumerate', 'roles', 'both']);
-        return { content: [{ type: "text", text: await analyzeLambdaSecurityMultiRegion(region, scanMode) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await analyzeLambdaSecurityMultiRegion(region, scanMode);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
       // ========== NETWORK & INFRASTRUCTURE SECURITY ==========
-      case "enumerate_eks_clusters": {
+      case "aws_enumerate_eks_clusters": {
         const region = v.regionRequired(args?.region, false);
-        return { content: [{ type: "text", text: await enumerateEKSClusters(region) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await enumerateEKSClusters(region);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "analyze_encryption_security": {
+      case "aws_analyze_encryption_security": {
         const region = v.regionRequired(args?.region, false);
         const resourceType = v.resourceType(args?.resourceType, ['kms', 'dynamodb', 'both']);
         const tableName = v.tableName(args?.tableName);
-        return { content: [{ type: "text", text: await analyzeEncryptionSecurity(region, resourceType, tableName) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await analyzeEncryptionSecurity(region, resourceType, tableName);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "analyze_api_distribution_security": {
+      case "aws_analyze_api_distribution_security": {
         const region = v.region(args?.region);
         const scanMode = v.scanMode(args?.scanMode, ['api_gateway', 'cloudfront', 'both']);
-        return { content: [{ type: "text", text: await analyzeAPIDistributionSecurity(region, scanMode) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await analyzeAPIDistributionSecurity(region, scanMode);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "scan_secrets_manager": {
+      case "aws_scan_secrets_manager": {
         const region = v.regionRequired(args?.region, false);
-        return { content: [{ type: "text", text: await scanSecretsManager(region) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await scanSecretsManager(region);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "enumerate_public_resources": {
+      case "aws_enumerate_public_resources": {
         const region = v.regionRequired(args?.region, true);
-        return { content: [{ type: "text", text: await enumeratePublicResourcesMultiRegion(region) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await enumeratePublicResourcesMultiRegion(region);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "generate_security_report": {
+      case "aws_generate_security_report": {
         const region = v.regionRequired(args?.region, false);
         const format = v.format(args?.format);
         const outputFile = v.filePath(args?.outputFile);
         return { content: [{ type: "text", text: await generateSecurityReport(region, format, outputFile) }] };
       }
 
-      case "scan_elasticache_security": {
+      case "aws_scan_elasticache_security": {
         const region = v.regionRequired(args?.region, false);
-        return { content: [{ type: "text", text: await scanElastiCacheSecurity(region) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await scanElastiCacheSecurity(region);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "get_guardduty_findings": {
+      case "aws_get_guardduty_findings": {
         const region = v.regionRequired(args?.region, false);
         const severity = v.severity(args?.severity);
-        return { content: [{ type: "text", text: await getGuardDutyFindings(region, severity) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await getGuardDutyFindings(region, severity);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "analyze_messaging_security": {
+      case "aws_analyze_messaging_security": {
         const region = v.regionRequired(args?.region, false);
         const scanMode = v.scanMode(args?.scanMode, ['sns', 'sqs', 'both']);
-        return { content: [{ type: "text", text: await analyzeMessagingSecurity(region, scanMode) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await analyzeMessagingSecurity(region, scanMode);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "generate_tra_report": {
+      case "aws_generate_tra_report": {
         const region = v.regionRequired(args?.region, false);
         const framework = v.framework(args?.framework);
         const format = v.format(args?.format);
@@ -1333,153 +1745,212 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: await generateTRAReport(region, framework, format, outputFile) }] };
       }
 
-      case "analyze_infrastructure_automation": {
+      case "aws_analyze_infrastructure_automation": {
         const region = v.regionRequired(args?.region, false);
         const scanMode = v.scanMode(args?.scanMode, ['cloudformation', 'eventbridge', 'both']);
-        return { content: [{ type: "text", text: await analyzeInfrastructureAutomation(region, scanMode) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await analyzeInfrastructureAutomation(region, scanMode);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "enumerate_organizations":
-        return { content: [{ type: "text", text: await enumerateOrganizations() }] };
+      case "aws_enumerate_organizations": {
+        const format = v.outputFormat(args?.format);
+        const result = await enumerateOrganizations();
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
+      }
 
-      case "enumerate_detection_services": {
+      case "aws_enumerate_detection_services": {
         const region = v.regionRequired(args?.region, false);
-        return { content: [{ type: "text", text: await enumerateDetectionServices(region) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await enumerateDetectionServices(region);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
       // ========== PHASE 2: ADVANCED PERMISSION ANALYSIS TOOLS ==========
-      case "analyze_iam_trust_chains":
-        return { content: [{ type: "text", text: await analyzeIAMTrustChains() }] };
+      case "aws_analyze_iam_trust_chains": {
+        const format = v.outputFormat(args?.format);
+        const result = await analyzeIAMTrustChains();
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
+      }
 
-      case "detect_permissive_roles":
-        return { content: [{ type: "text", text: await findOverlyPermissiveRoles() }] };
+      case "aws_detect_permissive_roles": {
+        const format = v.outputFormat(args?.format);
+        const result = await findOverlyPermissiveRoles();
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
+      }
 
       // ========== PHASE 3: PERSISTENCE & EVASION DETECTION TOOLS ==========
-      case "detect_persistence_mechanisms": {
+      case "aws_detect_persistence_mechanisms": {
         const region = v.regionRequired(args?.region, false);
-        return { content: [{ type: "text", text: await detectPersistenceMechanisms(region) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await detectPersistenceMechanisms(region);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "analyze_service_role_chain": {
+      case "aws_analyze_service_role_chain": {
         const region = v.regionRequired(args?.region, false);
-        return { content: [{ type: "text", text: await analyzeServiceRoleChain(region) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await analyzeServiceRoleChain(region);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "analyze_cross_account_movement":
-        return { content: [{ type: "text", text: await trackCrossAccountMovement() }] };
+      case "aws_analyze_cross_account_movement": {
+        const format = v.outputFormat(args?.format);
+        const result = await trackCrossAccountMovement();
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
+      }
 
-      case "detect_mfa_bypass_vectors": {
+      case "aws_detect_mfa_bypass_vectors": {
         const region = v.regionRequired(args?.region, false);
-        return { content: [{ type: "text", text: await detectMFABypassVectors(region) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await detectMFABypassVectors(region);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
       // New security tools
-      case "analyze_cloudwatch_security": {
+      case "aws_analyze_cloudwatch_security": {
         const region = v.regionRequired(args?.region, false);
-        return { content: [{ type: "text", text: await analyzeCloudWatchSecurity(region) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await analyzeCloudWatchSecurity(region);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "scan_ssm_security": {
+      case "aws_scan_ssm_security": {
         const region = v.regionRequired(args?.region, false);
-        return { content: [{ type: "text", text: await scanSSMSecurity(region) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await scanSSMSecurity(region);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "analyze_ec2_metadata_exposure": {
+      case "aws_analyze_ec2_metadata_exposure": {
         const region = v.regionRequired(args?.region, false);
-        return { content: [{ type: "text", text: await analyzeEC2MetadataExposure(region) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await analyzeEC2MetadataExposure(region);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "scan_resource_policies": {
+      case "aws_scan_resource_policies": {
         const region = v.regionRequired(args?.region, false);
         const resourceType = v.resourceType(args?.resourceType, ['s3', 'sqs', 'sns', 'kms', 'lambda', 'all']);
-        return { content: [{ type: "text", text: await scanResourcePolicies(region, resourceType) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await scanResourcePolicies(region, resourceType);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "analyze_network_exposure": {
+      case "aws_analyze_network_exposure": {
         const region = v.regionRequired(args?.region, false);
-        return { content: [{ type: "text", text: await analyzeNetworkExposure(region) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await analyzeNetworkExposure(region);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "detect_data_exfiltration_paths": {
+      case "aws_detect_data_exfiltration_paths": {
         const region = v.regionRequired(args?.region, false);
-        return { content: [{ type: "text", text: await detectDataExfiltrationPaths(region) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await detectDataExfiltrationPaths(region);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
       // ========== KUBERNETES SECURITY TOOLS ==========
-      case "scan_eks_service_accounts": {
+      case "aws_scan_eks_service_accounts": {
         const region = v.regionRequired(args?.region, false);
         const clusterName = v.clusterNameRequired(args?.clusterName);
-        return { content: [{ type: "text", text: await scanEKSServiceAccounts(region, clusterName) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await scanEKSServiceAccounts(region, clusterName);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "hunt_eks_secrets": {
+      case "aws_hunt_eks_secrets": {
         const region = v.regionRequired(args?.region, false);
         const clusterName = v.clusterNameRequired(args?.clusterName);
-        return { content: [{ type: "text", text: await huntEKSSecrets(region, clusterName) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await huntEKSSecrets(region, clusterName);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
       // ========== MULTI-REGION SCANNING TOOLS ==========
-      case "scan_all_regions": {
+      case "aws_scan_all_regions": {
         const resourceType = v.resourceType(args?.resourceType, ['ec2', 'rds', 'lambda', 's3', 'eks', 'all']);
         if (!resourceType) throw new Error("resourceType is required");
         const scanMode = v.scanMode(args?.scanMode, ['quick', 'deep']);
         const parallelism = typeof args?.parallelism === 'number' && args.parallelism > 0 && args.parallelism <= 10 
           ? args.parallelism : undefined;
         const regions = v.genericString(args?.regions);
-        return { content: [{ type: "text", text: await scanAllRegions(resourceType, scanMode, parallelism, regions) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await scanAllRegions(resourceType, scanMode, parallelism, regions);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "list_active_regions": {
+      case "aws_list_active_regions": {
         const scanMode = v.scanMode(args?.scanMode, ['quick', 'thorough']);
         const regions = v.genericString(args?.regions);
-        return { content: [{ type: "text", text: await listActiveRegions(scanMode, regions) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await listActiveRegions(scanMode, regions);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
       // ========== CACHE MANAGEMENT TOOLS ==========
-      case "cache_stats":
-        return { content: [{ type: "text", text: getCacheStats() }] };
+      case "aws_cache_stats": {
+        const format = v.outputFormat(args?.format);
+        const result = getCacheStats();
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
+      }
 
-      case "cache_clear": {
+      case "aws_cache_clear": {
         const pattern = v.genericString(args?.pattern, 100);
-        return { content: [{ type: "text", text: clearCache(pattern) }] };
+        const format = v.outputFormat(args?.format);
+        const result = clearCache(pattern);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
       // ========== ATTACK CHAIN & ADVANCED ANALYSIS TOOLS ==========
-      case "build_attack_chains": {
+      case "aws_build_attack_chains": {
         const region = v.region(args?.region) || 'us-east-1';
         const principalArn = v.arn(args?.principalArn);
         const minSeverity = v.severity(args?.minSeverity) || 'HIGH';
-        return { content: [{ type: "text", text: await buildAttackChains(region, principalArn, minSeverity) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await buildAttackChains(region, principalArn, minSeverity);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "analyze_eks_attack_surface": {
+      case "aws_analyze_eks_attack_surface": {
         const region = v.region(args?.region);
         const clusterName = v.clusterName(args?.clusterName);
-        return { content: [{ type: "text", text: await analyzeEKSAttackSurface(region, clusterName) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await analyzeEKSAttackSurface(region, clusterName);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "detect_privesc_patterns": {
+      case "aws_detect_privesc_patterns": {
         const principalArn = v.arn(args?.principalArn);
         const includeRemediation = args?.includeRemediation !== false;
-        return { content: [{ type: "text", text: await detectPrivescPatterns(principalArn, includeRemediation) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await detectPrivescPatterns(principalArn, includeRemediation);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "analyze_ami_security": {
+      case "aws_analyze_ami_security": {
         const region = v.regionRequired(args?.region, false);
         const includeAwsManaged = args?.includeAwsManaged === true;
-        return { content: [{ type: "text", text: await analyzeAMISecurity(region, includeAwsManaged) }] };
+        const format = v.outputFormat(args?.format);
+        const result = await analyzeAMISecurity(region, includeAwsManaged);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
       // ========== AUDIT & TELEMETRY TOOLS (OWASP MCP08) ==========
-      case "get_audit_logs": {
+      case "aws_get_audit_logs": {
         const level = v.scanMode(args?.level, ['DEBUG', 'INFO', 'WARN', 'ERROR', 'SECURITY']);
         const tool = v.genericString(args?.tool, 100);
         const limit = typeof args?.limit === 'number' && args.limit > 0 && args.limit <= 500 
           ? args.limit : undefined;
-        return { content: [{ type: "text", text: getAuditLogs(level, tool, limit) }] };
+        const format = v.outputFormat(args?.format);
+        const result = getAuditLogs(level, tool, limit);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
       default:
+        performanceTracker.end(trackingId, false, 'UNKNOWN_TOOL');
+        logger.warn(`Unknown tool requested: ${name}`, { tool: name }, name);
         auditLogger.logToolCall({
           level: 'WARN',
           tool: name,
@@ -1492,16 +1963,32 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
     }
   } catch (error: any) {
-    // OWASP MCP08: Log errors
+    // End performance tracking with failure
+    performanceTracker.end(trackingId, false, error?.name || 'UnknownError');
+    
+    // Normalize error to structured format
+    const structured = normalizeError(error);
+    
+    // Log error with PII redaction
+    logger.error(`Tool execution failed: ${name}`, structured.toJSON(), name);
+    
+    // OWASP MCP08: Log errors for audit
     auditLogger.logToolCall({
       level: 'ERROR',
       tool: name,
       action: 'EXECUTION_FAILED',
-      error: error.message,
+      error: structured.message,
       result: 'FAILURE',
     });
+    
+    // Return formatted error response
+    const format = args?.format === 'json' ? 'json' : 'markdown';
+    const errorOutput = format === 'json' 
+      ? formatErrorJSON(structured)
+      : formatErrorMarkdown(structured);
+    
     return {
-      content: [{ type: "text", text: `Error: ${error.message}` }],
+      content: [{ type: "text", text: errorOutput }],
       isError: true,
     };
   }

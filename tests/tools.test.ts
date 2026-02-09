@@ -6,7 +6,7 @@ import { describe, it, expect } from '@jest/globals';
 describe('AWS Tool Structure Validation', () => {
   // Mock a sample tool structure for testing
   const sampleTool = {
-    name: 'enumerate_ec2_instances',
+    name: 'aws_enumerate_ec2_instances',
     description: 'List all EC2 instances with security details',
     annotations: {
       readOnly: true,
@@ -34,7 +34,7 @@ describe('AWS Tool Structure Validation', () => {
   });
 
   it('should have valid tool name format', () => {
-    expect(sampleTool.name).toMatch(/^[a-z][a-z0-9_]*$/);
+    expect(sampleTool.name).toMatch(/^aws_[a-z][a-z0-9_]*$/);
     expect(sampleTool.name.length).toBeGreaterThan(0);
     expect(sampleTool.name).not.toContain(' ');
   });
@@ -66,12 +66,12 @@ describe('AWS Tool Structure Validation', () => {
 
 describe('Tool Naming Conventions', () => {
   const validToolNames = [
-    'whoami',
-    'enumerate_ec2_instances',
-    'analyze_s3_security',
-    'scan_secrets_manager',
-    'detect_privesc_patterns',
-    'build_attack_chains',
+    'aws_whoami',
+    'aws_enumerate_ec2_instances',
+    'aws_analyze_s3_security',
+    'aws_scan_secrets_manager',
+    'aws_detect_privesc_patterns',
+    'aws_build_attack_chains',
   ];
 
   const invalidToolNames = [
@@ -79,17 +79,18 @@ describe('Tool Naming Conventions', () => {
     'enumerate-ec2',    // kebab-case
     'scan EC2',         // spaces
     'analyze_S3',       // mixed case
+    'whoami',           // missing aws_ prefix
   ];
 
-  it('should accept valid snake_case names', () => {
+  it('should accept valid snake_case names with aws_ prefix', () => {
     validToolNames.forEach(name => {
-      expect(name).toMatch(/^[a-z][a-z0-9_]*$/);
+      expect(name).toMatch(/^aws_[a-z][a-z0-9_]*$/);
     });
   });
 
   it('should reject invalid name formats', () => {
     invalidToolNames.forEach(name => {
-      expect(name).not.toMatch(/^[a-z][a-z0-9_]*$/);
+      expect(name).not.toMatch(/^aws_[a-z][a-z0-9_]*$/);
     });
   });
 
@@ -97,9 +98,9 @@ describe('Tool Naming Conventions', () => {
     const actionVerbs = ['enumerate', 'analyze', 'scan', 'detect', 'build', 'generate', 'hunt'];
     
     validToolNames.forEach(name => {
-      if (name === 'whoami' || name === 'help') return; // special cases
+      if (name === 'aws_whoami' || name === 'aws_help') return; // special cases
       
-      const hasActionVerb = actionVerbs.some(verb => name.startsWith(verb));
+      const hasActionVerb = actionVerbs.some(verb => name.includes(`_${verb}`));
       expect(hasActionVerb).toBe(true);
     });
   });
@@ -107,63 +108,63 @@ describe('Tool Naming Conventions', () => {
 
 describe('Tool Categories', () => {
   const toolCategories = {
-    utility: ['help', 'whoami', 'cache_stats', 'cache_clear'],
+    utility: ['aws_help', 'aws_whoami', 'aws_cache_stats', 'aws_cache_clear'],
     enumeration: [
-      'enumerate_ec2_instances',
-      'enumerate_iam_roles',
-      'enumerate_rds_databases',
-      'enumerate_eks_clusters',
-      'enumerate_public_resources',
-      'enumerate_organizations',
-      'enumerate_detection_services',
+      'aws_enumerate_ec2_instances',
+      'aws_enumerate_iam_roles',
+      'aws_enumerate_rds_databases',
+      'aws_enumerate_eks_clusters',
+      'aws_enumerate_public_resources',
+      'aws_enumerate_organizations',
+      'aws_enumerate_detection_services',
     ],
     security_analysis: [
-      'analyze_s3_security',
-      'analyze_iam_users',
-      'analyze_network_security',
-      'analyze_lambda_security',
-      'analyze_encryption_security',
-      'analyze_api_distribution_security',
-      'analyze_messaging_security',
-      'analyze_infrastructure_automation',
-      'analyze_iam_trust_chains',
-      'analyze_service_role_chain',
-      'analyze_cross_account_movement',
-      'analyze_cloudwatch_security',
-      'analyze_ec2_metadata_exposure',
-      'analyze_network_exposure',
-      'analyze_ami_security',
-      'analyze_eks_attack_surface',
+      'aws_analyze_s3_security',
+      'aws_analyze_iam_users',
+      'aws_analyze_network_security',
+      'aws_analyze_lambda_security',
+      'aws_analyze_encryption_security',
+      'aws_analyze_api_distribution_security',
+      'aws_analyze_messaging_security',
+      'aws_analyze_infrastructure_automation',
+      'aws_analyze_iam_trust_chains',
+      'aws_analyze_service_role_chain',
+      'aws_analyze_cross_account_movement',
+      'aws_analyze_cloudwatch_security',
+      'aws_analyze_ec2_metadata_exposure',
+      'aws_analyze_network_exposure',
+      'aws_analyze_ami_security',
+      'aws_analyze_eks_attack_surface',
     ],
     scanning: [
-      'scan_secrets_manager',
-      'scan_elasticache_security',
-      'scan_ssm_security',
-      'scan_resource_policies',
-      'scan_eks_service_accounts',
-      'scan_all_regions',
+      'aws_scan_secrets_manager',
+      'aws_scan_elasticache_security',
+      'aws_scan_ssm_security',
+      'aws_scan_resource_policies',
+      'aws_scan_eks_service_accounts',
+      'aws_scan_all_regions',
     ],
     detection: [
-      'detect_permissive_roles',
-      'detect_persistence_mechanisms',
-      'detect_mfa_bypass_vectors',
-      'detect_data_exfiltration_paths',
-      'detect_privesc_patterns',
+      'aws_detect_permissive_roles',
+      'aws_detect_persistence_mechanisms',
+      'aws_detect_mfa_bypass_vectors',
+      'aws_detect_data_exfiltration_paths',
+      'aws_detect_privesc_patterns',
     ],
     reporting: [
-      'generate_security_report',
-      'generate_tra_report',
-      'get_guardduty_findings',
-      'get_audit_logs',
+      'aws_generate_security_report',
+      'aws_generate_tra_report',
+      'aws_get_guardduty_findings',
+      'aws_get_audit_logs',
     ],
     hunting: [
-      'hunt_eks_secrets',
+      'aws_hunt_eks_secrets',
     ],
     chaining: [
-      'build_attack_chains',
+      'aws_build_attack_chains',
     ],
     discovery: [
-      'list_active_regions',
+      'aws_list_active_regions',
     ],
   };
 
@@ -275,8 +276,8 @@ describe('Tool Annotations Standards', () => {
 
 describe('OWASP MCP Compliance - Tool Level', () => {
   it('should follow MCP naming conventions (MCP01)', () => {
-    const toolName = 'enumerate_ec2_instances';
-    expect(toolName).toMatch(/^[a-z][a-z0-9_]*$/);
+    const toolName = 'aws_enumerate_ec2_instances';
+    expect(toolName).toMatch(/^aws_[a-z][a-z0-9_]*$/);
     expect(toolName.length).toBeLessThan(100);
   });
 

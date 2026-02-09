@@ -2,7 +2,7 @@
 
 # Nimbus - AWS Security Assessment MCP Server
 
-[![Version](https://img.shields.io/badge/version-1.5.4-blue.svg)](https://github.com/jaikumar3/nimbus-mcp)
+[![Version](https://img.shields.io/badge/version-1.5.6-blue.svg)](https://github.com/jaikumar3/nimbus-mcp)
 [![Tools](https://img.shields.io/badge/tools-45-green.svg)](https://github.com/jaikumar3/nimbus-mcp)
 [![Tests](https://img.shields.io/badge/tests-95%20passing-brightgreen.svg)](https://jestjs.io/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
@@ -177,19 +177,56 @@ For VS Code: Add to .vscode/mcp.json
 
 ```bash
 # 🔑 Identify current AWS identity
-#mcp_nimbus_whoami
+#aws_whoami
 
 # 🌐 Find public-facing resources (attack surface)
-#mcp_nimbus_enumerate_public_resources region: us-east-1
+#aws_enumerate_public_resources region: us-east-1
 
 # 🔒 Analyze Security Groups for dangerous rules
-#mcp_nimbus_analyze_security_groups region: us-east-1
+#aws_analyze_security_groups region: us-east-1
 
 # 🪣 Deep scan S3 bucket security (7 checks)
-#mcp_nimbus_scan_s3_bucket_security bucketName: my-production-bucket
+#aws_scan_s3_bucket_security bucketName: my-production-bucket
 
 # 📊 Generate executive TRA report (PDF)
-#mcp_nimbus_generate_security_report region: us-east-1 format: pdf outputFile: C:\reports\aws-security-2026.pdf
+#aws_generate_security_report region: us-east-1 format: pdf outputFile: C:\reports\aws-security-2026.pdf
+```
+
+### 5️⃣ Output Format Control ⭐ NEW
+
+All 43 security tools now support flexible output formatting via the optional `format` parameter:
+
+**Markdown (Default)** - Human-readable output, perfect for documentation and reports
+```bash
+#aws_whoami
+# Returns: Clean markdown text (backward compatible)
+```
+
+**JSON** - Machine-readable structured data with metadata for automation
+```bash
+#aws_whoami format: json
+# Returns: { "tool": "aws_whoami", "format": "json", "timestamp": "...", "data": {...} }
+```
+
+**Key Benefits:**
+- ✅ **Backward Compatible** - Existing tools work without changes (defaults to markdown)
+- ✅ **API Integration** - JSON format enables programmatic consumption
+- ✅ **Automation** - Parse structured data for CI/CD pipelines
+- ✅ **Metadata** - JSON includes tool name, timestamp, and versioning
+- ✅ **Flexible** - Choose format per-tool based on use case
+
+**Supported Tools:** All security scanners, enumerators, and analyzers (43 tools total)
+
+**Example Use Cases:**
+```bash
+# Export scan results to JSON for automation
+#aws_analyze_security_groups region: us-east-1 format: json > results.json
+
+# Human-readable documentation output (default)
+#aws_scan_s3_bucket_security bucketName: my-bucket
+
+# Structured data for API integration
+#aws_detect_privesc_patterns format: json
 ```
 
 ## 📋 Complete Tool Reference
@@ -199,18 +236,18 @@ For VS Code: Add to .vscode/mcp.json
 
 | Tool | Description | Example |
 |------|-------------|---------|
-| `whoami` | Identify current AWS identity (user/role, account ID, ARN) | `#mcp_nimbus_whoami` |
-| `enumerate_ec2_instances` | List EC2 instances with public IPs and security groups | `region: us-east-1` |
-| `enumerate_s3_buckets` | List all S3 buckets in the account | No parameters |
-| `enumerate_iam_users` | List IAM users with access key ages and last used dates | No parameters |
-| `enumerate_iam_roles` | List IAM roles with trust relationships | No parameters |
-| `enumerate_rds_databases` | List RDS instances/clusters with public accessibility | `region: us-east-1` |
-| `enumerate_vpcs` | List VPCs with subnets and CIDR blocks | `region: us-east-1` |
-| `enumerate_lambda_functions` | List Lambda functions with runtimes and IAM roles | `region: us-east-1` |
-| `enumerate_eks_clusters` | List EKS clusters with Kubernetes versions | `region: us-east-1` |
-| `enumerate_public_resources` | Map public attack surface (EC2, RDS, S3) | `region: us-east-1` |
-| `scan_eks_service_accounts` | Analyze EKS service account security (IRSA, OIDC) | `region, clusterName` |
-| `hunt_eks_secrets` | Comprehensive K8s secret hunting guide | `region, clusterName` |
+| `aws_whoami` | Identify current AWS identity (user/role, account ID, ARN) | `#aws_whoami` |
+| `aws_enumerate_ec2_instances` | List EC2 instances with public IPs and security groups | `region: us-east-1` |
+| `aws_enumerate_s3_buckets` | List all S3 buckets in the account | No parameters |
+| `aws_enumerate_iam_users` | List IAM users with access key ages and last used dates | No parameters |
+| `aws_enumerate_iam_roles` | List IAM roles with trust relationships | No parameters |
+| `aws_enumerate_rds_databases` | List RDS instances/clusters with public accessibility | `region: us-east-1` |
+| `aws_enumerate_vpcs` | List VPCs with subnets and CIDR blocks | `region: us-east-1` |
+| `aws_enumerate_lambda_functions` | List Lambda functions with runtimes and IAM roles | `region: us-east-1` |
+| `aws_enumerate_eks_clusters` | List EKS clusters with Kubernetes versions | `region: us-east-1` |
+| `aws_enumerate_public_resources` | Map public attack surface (EC2, RDS, S3) | `region: us-east-1` |
+| `aws_scan_eks_service_accounts` | Analyze EKS service account security (IRSA, OIDC) | `region, clusterName` |
+| `aws_hunt_eks_secrets` | Comprehensive K8s secret hunting guide | `region, clusterName` |
 
 </details>
 
@@ -219,8 +256,8 @@ For VS Code: Add to .vscode/mcp.json
 
 | Tool | Description | Example |
 |------|-------------|---------|
-| `scan_all_regions` | Scan multiple AWS regions for resources in parallel. Supports EC2, Lambda, RDS, EKS, Secrets, GuardDuty, ElastiCache, VPC. | `resourceType: ec2, regions: "us-east-1,eu-west-1"` |
-| `list_active_regions` | Quick discovery of which regions have resources deployed. Checks EC2, Lambda, RDS counts per region. | `scanMode: common` or `regions: "us-east-1"` |
+| `aws_scan_all_regions` | Scan multiple AWS regions for resources in parallel. Supports EC2, Lambda, RDS, EKS, Secrets, GuardDuty, ElastiCache, VPC. | `resourceType: ec2, regions: "us-east-1,eu-west-1"` |
+| `aws_list_active_regions` | Quick discovery of which regions have resources deployed. Checks EC2, Lambda, RDS counts per region. | `scanMode: common` or `regions: "us-east-1"` |
 
 **Usage Examples:**
 ```bash
@@ -247,19 +284,19 @@ list_active_regions --scanMode common
 
 | Tool | Security Checks | Severity Findings |
 |------|----------------|-------------------|
-| `scan_s3_bucket_security` | Public access, encryption, ACLs, versioning, logging | 🔴 Critical: Public + unencrypted |
-| `analyze_security_groups` | 0.0.0.0/0 rules, open ports (SSH, RDP, DB) | 🔴 Critical: Internet-exposed mgmt ports |
+| `aws_scan_s3_bucket_security` | Public access, encryption, ACLs, versioning, logging | 🔴 Critical: Public + unencrypted |
+| `aws_analyze_security_groups` | 0.0.0.0/0 rules, open ports (SSH, RDP, DB) | 🔴 Critical: Internet-exposed mgmt ports |
 | `check_iam_policies` | Wildcard permissions (`*:*`), overly permissive | 🔴 Critical: Admin access wildcards |
 | `check_kms_keys` | Key rotation, key policy analysis | 🟡 Medium: Rotation disabled |
-| `scan_secrets_manager` | Rotation enabled, encryption, last rotated date | 🟠 High: No rotation in 90+ days |
-| `scan_dynamodb_security` | Encryption at rest, PITR, backup retention | 🔴 Critical: No encryption |
-| `scan_api_gateway_security` | Logging, throttling, authorization, SSL certificates | 🟠 High: No logging enabled |
-| `scan_cloudfront_security` | TLS versions, HTTPS enforcement, WAF, OAI | 🔴 Critical: TLSv1.0 enabled |
-| `scan_elasticache_security` | Encryption in-transit/at-rest, auth tokens | 🔴 Critical: No encryption |
-| `get_guardduty_findings` | Active threats, malicious IPs, compromised instances | 🔴 Critical: Active threats |
-| `scan_sns_security` | Topic encryption (KMS), access policies, HTTP subscriptions | 🔴 Critical: No encryption |
-| `scan_sqs_security` | Queue encryption, dead letter queues, access policies | 🔴 Critical: Public queue access |
-| `scan_cognito_security` | Unauthenticated access, MFA, password policies | 🔴 Critical: Unauth access enabled |
+| `aws_scan_secrets_manager` | Rotation enabled, encryption, last rotated date | 🟠 High: No rotation in 90+ days |
+| `aws_scan_dynamodb_security` | Encryption at rest, PITR, backup retention | 🔴 Critical: No encryption |
+| `aws_scan_api_gateway_security` | Logging, throttling, authorization, SSL certificates | 🟠 High: No logging enabled |
+| `aws_scan_cloudfront_security` | TLS versions, HTTPS enforcement, WAF, OAI | 🔴 Critical: TLSv1.0 enabled |
+| `aws_scan_elasticache_security` | Encryption in-transit/at-rest, auth tokens | 🔴 Critical: No encryption |
+| `aws_get_guardduty_findings` | Active threats, malicious IPs, compromised instances | 🔴 Critical: Active threats |
+| `aws_scan_sns_security` | Topic encryption (KMS), access policies, HTTP subscriptions | 🔴 Critical: No encryption |
+| `aws_scan_sqs_security` | Queue encryption, dead letter queues, access policies | 🔴 Critical: Public queue access |
+| `aws_scan_cognito_security` | Unauthenticated access, MFA, password policies | 🔴 Critical: Unauth access enabled |
 
 </details>
 
@@ -268,8 +305,8 @@ list_active_regions --scanMode common
 
 | Tool | Analysis | Output |
 |------|----------|--------|
-| `analyze_attack_paths` | IAM privilege escalation, public → internal vectors | Exploitation scenarios with step-by-step chains |
-| `generate_security_report` | Aggregate all findings, risk scoring, remediation | PDF/HTML/CSV/Markdown reports |
+| `aws_analyze_attack_paths` | IAM privilege escalation, public → internal vectors | Exploitation scenarios with step-by-step chains |
+| `aws_generate_security_report` | Aggregate all findings, risk scoring, remediation | PDF/HTML/CSV/Markdown reports |
 
 </details>
 
@@ -326,6 +363,27 @@ list_active_regions --scanMode common
 | **Modify** | ❌ No | Not imported in codebase |
 
 **Verification:** Even with admin credentials (`*:*` permissions), the tool **cannot** modify AWS resources. All SDK commands are read-only by design.
+
+### 🛡️ Input Validation & Auto-Completion ⭐ NEW
+
+**Enhanced Security (OWASP MCP-05 Compliance):**
+- **Pattern-Based Validation** - Regex validation for all AWS resource identifiers (ARNs, instance IDs, bucket names, etc.)
+- **Whitelist Validation** - Region names and resource types validated against AWS service catalogs
+- **Sanitization** - Automatic removal of control characters and length enforcement
+- **Clear Error Messages** - Helpful validation errors guide users to correct input formats
+
+**Improved User Experience:**
+- **Auto-Completion Support** - Intelligent suggestions for regions, resource types, formats, and scan modes
+- **Prefix Filtering** - Type-ahead suggestions as you enter values
+- **Context-Aware** - Suggests relevant values based on the current tool and argument
+
+Supported completions:
+- `region`/`regions` - All 30 AWS regions + "all", "common"
+- `resourceType` - EC2, Lambda, RDS, EKS, Secrets, GuardDuty, ElastiCache, VPC
+- `format` - markdown, json, html, pdf, csv
+- `scanMode` - common, all
+- `severity` - LOW, MEDIUM, HIGH, CRITICAL
+- `framework` - nist, iso27001, pci-dss, hipaa, soc2, cis
 
 ## 🔍 Security Findings Reference
 
@@ -417,7 +475,7 @@ Compliance: 60-75% (Typical first scan)
 | **USAGE.md** | Detailed workflows, examples, best practices | 400+ | [View](USAGE.md) |
 | **TRA_TOOL.md** | Complete TRA guide with compliance frameworks | 471 | [View](TRA_TOOL.md) |
 | **COMPLETE.md** | Phase completion summary, achievements | 200+ | [View](COMPLETE.md) |
-| **Built-in Help** | Interactive command reference | - | `#mcp_nimbus_help` |
+| **Built-in Help** | Interactive command reference | - | `#aws_help` |
 
 ## 🛡️ Security & Compliance
 
@@ -508,16 +566,16 @@ This tool helps assess compliance with:
 
 ```bash
 # Step 1: Verify access
-#mcp_nimbus_whoami
+#aws_whoami
 
 # Step 2: Map attack surface
-#mcp_nimbus_enumerate_public_resources region: us-east-1
+#aws_enumerate_public_resources region: us-east-1
 
 # Step 3: Check network security
-#mcp_nimbus_analyze_security_groups region: us-east-1
+#aws_analyze_security_groups region: us-east-1
 
 # Step 4: Generate executive report
-#mcp_nimbus_generate_security_report region: us-east-1 format: pdf outputFile: C:\reports\quick-scan.pdf
+#aws_generate_security_report region: us-east-1 format: pdf outputFile: C:\reports\quick-scan.pdf
 ```
 
 **Expected Output:** 10-20 findings, risk score, top 5 priorities
@@ -530,16 +588,16 @@ This tool helps assess compliance with:
 
 ```bash
 # Step 1: Enumerate all users
-#mcp_nimbus_enumerate_iam_users
+#aws_enumerate_iam_users
 
 # Step 2: Enumerate all roles
-#mcp_nimbus_enumerate_iam_roles
+#aws_enumerate_iam_roles
 
 # Step 3: Check for wildcard permissions
-#mcp_nimbus_check_iam_policies
+#aws_check_iam_policies
 
 # Step 4: Identify attack paths
-#mcp_nimbus_analyze_attack_paths region: us-east-1
+#aws_analyze_attack_paths region: us-east-1
 ```
 
 **Expected Output:** Wildcard policies, old access keys, privilege escalation chains
@@ -552,19 +610,19 @@ This tool helps assess compliance with:
 
 ```bash
 # Step 1: List all S3 buckets
-#mcp_nimbus_enumerate_s3_buckets
+#aws_enumerate_s3_buckets
 
 # Step 2: Deep scan critical buckets
-#mcp_nimbus_scan_s3_bucket_security bucketName: production-data
+#aws_scan_s3_bucket_security bucketName: production-data
 
 # Step 3: Check RDS encryption
-#mcp_nimbus_enumerate_rds_databases region: us-east-1
+#aws_enumerate_rds_databases region: us-east-1
 
 # Step 4: Check DynamoDB security
-#mcp_nimbus_scan_dynamodb_security region: us-east-1
+#aws_scan_dynamodb_security region: us-east-1
 
 # Step 5: Verify secrets rotation
-#mcp_nimbus_scan_secrets_manager region: us-east-1
+#aws_scan_secrets_manager region: us-east-1
 ```
 
 **Expected Output:** Unencrypted buckets, public databases, unrotated secrets
@@ -577,7 +635,7 @@ This tool helps assess compliance with:
 
 ```bash
 # Single command for comprehensive assessment
-#mcp_nimbus_generate_security_report region: us-east-1 format: pdf outputFile: C:\reports\TRA-Report-2026-Q4.pdf fullScan: true includeCompliance: true includeRemediation: true
+#aws_generate_security_report region: us-east-1 format: pdf outputFile: C:\reports\TRA-Report-2026-Q4.pdf fullScan: true includeCompliance: true includeRemediation: true
 ```
 
 **Report Includes:**
@@ -711,4 +769,6 @@ If this tool helps your security assessments, please:
 Made with ❤️ for the security community
 
 </div>
+
+
 

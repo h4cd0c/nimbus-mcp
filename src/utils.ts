@@ -10,6 +10,9 @@
  * - Audit logging (OWASP MCP08)
  */
 
+// Import error handling and logging (v1.5.7)
+import { ValidationError } from './errors.js';
+
 // ============================================
 // SECURITY: INPUT VALIDATION (OWASP MCP05)
 // ============================================
@@ -31,7 +34,37 @@ const AWS_PATTERNS = {
   roleArn: /^arn:aws:iam::\d{12}:role\/[\w+=,.@-]+$/,
   clusterName: /^[a-zA-Z][a-zA-Z0-9-_]{0,99}$/,
   functionName: /^[a-zA-Z0-9-_]{1,140}$/,
+  vpcId: /^vpc-[a-f0-9]{8,17}$/,
+  subnetId: /^subnet-[a-f0-9]{8,17}$/,
+  securityGroupId: /^sg-[a-f0-9]{8,17}$/,
+  dbInstanceId: /^[a-z][a-z0-9-]{0,62}$/,
+  keyId: /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/,
+  secretName: /^[a-zA-Z0-9\/_+=.@-]{1,512}$/,
+  parameterName: /^[a-zA-Z0-9_.-\/]{1,2048}$/,
+  ipAddress: /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/,
+  outputFormat: /^(markdown|json)$/,
 };
+
+/**
+ * Valid AWS regions (for validation)
+ */
+export const VALID_AWS_REGIONS = [
+  "us-east-1", "us-east-2", "us-west-1", "us-west-2",
+  "eu-west-1", "eu-west-2", "eu-west-3", "eu-central-1", "eu-central-2",
+  "eu-north-1", "eu-south-1", "eu-south-2",
+  "ap-south-1", "ap-south-2", "ap-northeast-1", "ap-northeast-2", "ap-northeast-3",
+  "ap-southeast-1", "ap-southeast-2", "ap-southeast-3", "ap-southeast-4", "ap-east-1",
+  "sa-east-1", "ca-central-1", "ca-west-1",
+  "me-south-1", "me-central-1", "af-south-1",
+  "il-central-1"
+];
+
+/**
+ * Valid resource types for multi-region scanning
+ */
+export const VALID_RESOURCE_TYPES = [
+  "ec2", "lambda", "rds", "eks", "secrets", "guardduty", "elasticache", "vpc"
+];
 
 /**
  * Validate and sanitize AWS region input
@@ -51,7 +84,10 @@ export function validateRegion(region: string | undefined, allowSpecial: boolean
   }
   
   if (!AWS_REGION_PATTERN.test(sanitized)) {
-    throw new Error(`Invalid AWS region format: ${region}. Expected format: us-east-1`);
+    throw new ValidationError(
+      `Invalid AWS region format: ${region}. Expected format: us-east-1`,
+      { provided: region, expected: 'us-east-1' }
+    );
   }
   
   return sanitized;
@@ -75,7 +111,7 @@ export function validateInput(
 ): string | undefined {
   if (input === undefined || input === null || input === '') {
     if (options.required) {
-      throw new Error('Required input is missing');
+      throw new ValidationError('Required input is missing', { field: 'input' });
     }
     return undefined;
   }
@@ -86,18 +122,27 @@ export function validateInput(
   // Length check
   const maxLen = options.maxLength || 1000;
   if (sanitized.length > maxLen) {
-    throw new Error(`Input exceeds maximum length of ${maxLen} characters`);
+    throw new ValidationError(
+      `Input exceeds maximum length of ${maxLen} characters`,
+      { provided: sanitized.length, maxLength: maxLen }
+    );
   }
   
   // Allowed values check
   if (options.allowedValues && !options.allowedValues.includes(sanitized)) {
-    throw new Error(`Invalid value: ${sanitized}. Allowed: ${options.allowedValues.join(', ')}`);
+    throw new ValidationError(
+      `Invalid value: ${sanitized}. Allowed: ${options.allowedValues.join(', ')}`,
+      { provided: sanitized, allowed: options.allowedValues }
+    );
   }
   
   // Pattern validation
   if (options.pattern && !options.pattern.test(sanitized)) {
     const name = options.patternName || 'input';
-    throw new Error(`Invalid ${name} format: ${sanitized}`);
+    throw new ValidationError(
+      `Invalid ${name} format: ${sanitized}`,
+      { provided: sanitized, pattern: options.pattern.toString() }
+    );
   }
   
   return sanitized;
@@ -113,12 +158,12 @@ export function validateAWSResource(
 ): string | undefined {
   if (!value && !required) return undefined;
   if (!value && required) {
-    throw new Error(`${resourceType} is required`);
+    throw new ValidationError(`${resourceType} is required`, { field: resourceType });
   }
   
   const pattern = AWS_PATTERNS[resourceType];
   if (!pattern) {
-    throw new Error(`Unknown resource type: ${resourceType}`);
+    throw new ValidationError(`Unknown resource type: ${resourceType}`, { resourceType });
   }
   
   return validateInput(value, {
@@ -126,6 +171,73 @@ export function validateAWSResource(
     pattern,
     patternName: resourceType,
   });
+}
+
+/**
+ * Validate output format parameter
+ */
+export function validateOutputFormat(format: string | undefined): 'markdown' | 'json' {
+  if (!format) return 'markdown';
+  
+  const sanitized = format.trim().toLowerCase();
+  if (sanitized !== 'markdown' && sanitized !== 'json') {
+    throw new ValidationError(
+      `Invalid format: ${format}. Must be 'markdown' or 'json'.`,
+      { provided: format, allowed: ['markdown', 'json'] }
+    );
+  }
+  
+  return sanitized as 'markdown' | 'json';
+}
+
+/**
+ * Enhanced region validator with whitelist check
+ */
+export function validateRegionStrict(region: string | undefined, allowSpecial: boolean = true): string {
+  if (!region) {
+    return process.env.AWS_REGION || 'us-east-1';
+  }
+  
+  const sanitized = region.trim().toLowerCase();
+  
+  // Allow special values for multi-region scans
+  if (allowSpecial && (sanitized === 'all' || sanitized === 'common')) {
+    return sanitized;
+  }
+  
+  if (!AWS_REGION_PATTERN.test(sanitized)) {
+    throw new ValidationError(
+      `Invalid AWS region format: ${region}. Expected format: us-east-1`,
+      { provided: region, expected: 'us-east-1' }
+    );
+  }
+  
+  // Whitelist check
+  if (!VALID_AWS_REGIONS.includes(sanitized)) {
+    throw new ValidationError(
+      `Unknown AWS region: ${region}. Use one of: ${VALID_AWS_REGIONS.slice(0, 5).join(', ')}...`,
+      { provided: region, validRegions: VALID_AWS_REGIONS }
+    );
+  }
+  
+  return sanitized;
+}
+
+/**
+ * Validate resource type for multi-region scanning
+ */
+export function validateResourceType(resourceType: string | undefined): string {
+  if (!resourceType) {
+    throw new Error('Resource type is required');
+  }
+  
+  const sanitized = resourceType.trim().toLowerCase();
+  
+  if (!VALID_RESOURCE_TYPES.includes(sanitized)) {
+    throw new Error(`Invalid resource type: ${resourceType}. Valid types: ${VALID_RESOURCE_TYPES.join(', ')}`);
+  }
+  
+  return sanitized;
 }
 
 // ============================================
