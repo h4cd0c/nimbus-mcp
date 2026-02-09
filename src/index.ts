@@ -55,6 +55,10 @@ import { logger, performanceTracker } from "./logging.js";
 import { normalizeError, MCPError, ValidationError, formatErrorMarkdown, formatErrorJSON } from "./errors.js";
 import { retry, retryWithTimeout } from "./retry.js";
 
+// Performance Optimization Infrastructure (v1.5.8)
+import { awsCache, CacheKeyBuilder, CacheTTL } from "./cache.js";
+import { executeParallel, executeBatched, paginateAll, memoizeAsync } from "./performance.js";
+
 // Initialize AWS clients with default credentials
 const DEFAULT_REGION = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "us-east-1";
 
@@ -1606,6 +1610,56 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         performanceTracker.end(trackingId, true);
         logger.info(`Tool completed successfully: ${name}`, { format }, name);
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
+      }
+
+      case "aws_cache_stats": {
+        const format = v.outputFormat(args?.format);
+        const stats = awsCache.getStats();
+        const result = format === 'json' ? JSON.stringify(stats, null, 2) : 
+          `# Cache Statistics\n\n` +
+          `**Hit Rate:** ${stats.hitRate}%\n` +
+          `**Total Hits:** ${stats.hits}\n` +
+          `**Total Misses:** ${stats.misses}\n` +
+          `**Cache Entries:** ${stats.totalEntries}\n` +
+          `**Memory Usage:** ${stats.memoryUsageMB.toFixed(2)} MB\n` +
+          `**Evictions:** ${stats.evictions}\n\n` +
+          `Cache is ${stats.hitRate > 50 ? 'performing well' : 'warming up'}. ` +
+          `Hit rate indicates ${stats.hitRate}% of requests served from cache.`;
+        performanceTracker.end(trackingId, true);
+        logger.info(`Tool completed successfully: ${name}`, { stats }, name);
+        return { content: [{ type: "text", text: result }] };
+      }
+
+      case "aws_cache_clear": {
+        const pattern = v.genericString(args?.pattern);
+        const format = v.outputFormat(args?.format);
+        
+        let clearedCount = 0;
+        if (pattern) {
+          // Clear keys matching pattern
+          const allKeys = awsCache.keys();
+          for (const key of allKeys) {
+            if (key.includes(pattern)) {
+              awsCache.delete(key);
+              clearedCount++;
+            }
+          }
+        } else {
+          // Clear all
+          clearedCount = awsCache.size();
+          awsCache.clear();
+        }
+        
+        const result = format === 'json' ? 
+          JSON.stringify({ cleared: clearedCount, pattern: pattern || 'all' }, null, 2) :
+          `# Cache Cleared\n\n` +
+          `**Pattern:** ${pattern || 'all (entire cache)'}\n` +
+          `**Entries Cleared:** ${clearedCount}\n\n` +
+          `Cache has been cleared. Next API calls will fetch fresh data.`;
+        
+        performanceTracker.end(trackingId, true);
+        logger.info(`Cache cleared: ${name}`, { pattern, clearedCount }, name);
+        return { content: [{ type: "text", text: result }] };
       }
 
       case "aws_whoami": {
