@@ -1,6 +1,6 @@
 /**
  * Nimbus AWS MCP - Logging and Performance Tracking
- * Version 1.5.6
+ * See package.json for version
  * 
  * Provides:
  * - Structured logging with levels

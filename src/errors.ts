@@ -1,6 +1,6 @@
 /**
  * Nimbus AWS MCP - Structured Error Handling
- * Version 1.5.6
+ * See package.json for version
  * 
  * Provides comprehensive error handling with:
  * - Error categorization
@@ -321,7 +321,6 @@ export function normalizeError(error: unknown): MCPError {
   }
 
   if (error instanceof Error) {
-    // Check for AWS SDK errors
     if ('$metadata' in error || 'Code' in error) {
       const awsError = error as any;
       return new AWSAPIError(
@@ -336,12 +335,10 @@ export function normalizeError(error: unknown): MCPError {
       );
     }
 
-    // Check for timeout errors
     if (error.message.includes('timeout') || error.message.includes('ETIMEDOUT')) {
       return new TimeoutError('Operation', 30000, { originalMessage: error.message });
     }
 
-    // Check for network errors
     if (
       error.message.includes('ECONNREFUSED') ||
       error.message.includes('ENOTFOUND') ||

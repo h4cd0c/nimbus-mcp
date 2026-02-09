@@ -13,9 +13,7 @@
 // Import error handling and logging (v1.5.7)
 import { ValidationError } from './errors.js';
 
-// ============================================
 // SECURITY: INPUT VALIDATION (OWASP MCP05)
-// ============================================
 
 /**
  * Valid AWS region pattern
@@ -240,9 +238,7 @@ export function validateResourceType(resourceType: string | undefined): string {
   return sanitized;
 }
 
-// ============================================
 // SECURITY: AUDIT LOGGING (OWASP MCP08)
-// ============================================
 
 type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'SECURITY';
 
@@ -445,9 +441,7 @@ function sanitizeForLog(input?: Record<string, any>): Record<string, any> | unde
   return sanitized;
 }
 
-// ============================================
 // CACHING
-// ============================================
 
 interface CacheEntry<T> {
   data: T;
@@ -541,9 +535,7 @@ export function withCache<T>(
   };
 }
 
-// ============================================
 // RATE LIMITING
-// ============================================
 
 interface RateLimitConfig {
   maxRequests: number;
@@ -618,9 +610,7 @@ export const rateLimiters = {
   default: new RateLimiter({ maxRequests: 100, windowMs: 60000 }),
 };
 
-// ============================================
 // RETRY LOGIC WITH EXPONENTIAL BACKOFF
-// ============================================
 
 interface RetryConfig {
   maxRetries: number;
@@ -720,7 +710,6 @@ export async function safeApiCall<T>(
     retryConfig?: Partial<RetryConfig>;
   } = {}
 ): Promise<T> {
-  // Check cache first
   if (options.cacheKey) {
     const cached = cache.get<T>(options.cacheKey);
     if (cached !== undefined) {
@@ -743,9 +732,7 @@ export async function safeApiCall<T>(
   return result;
 }
 
-// ============================================
 // ERROR HANDLING UTILITIES
-// ============================================
 
 export interface ApiError {
   code: string;
@@ -816,9 +803,7 @@ export async function safeExecute<T>(
   }
 }
 
-// ============================================
 // BATCH PROCESSING UTILITIES
-// ============================================
 
 /**
  * Process items in batches with rate limiting
@@ -862,8 +847,6 @@ export async function batchProcess<T, R>(
   return { results, errors };
 }
 
-// ============================================
 // EXPORTS
-// ============================================
 
 export { Cache, RateLimiter, AWS_PATTERNS };

@@ -8,57 +8,49 @@ import {
   Tool,
   CompleteRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
-// AWS SDK imports - Phase 1
+// Read version from package.json (single source of truth)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const packageJson = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8'));
+const SERVER_VERSION = packageJson.version;
+
 import { EC2Client, DescribeInstancesCommand, DescribeSecurityGroupsCommand, DescribeVpcsCommand, DescribeSubnetsCommand, DescribeImagesCommand, DescribeImageAttributeCommand } from "@aws-sdk/client-ec2";
 import { S3Client, ListBucketsCommand, GetBucketPolicyCommand, GetBucketEncryptionCommand, GetPublicAccessBlockCommand, GetBucketAclCommand, GetBucketVersioningCommand, GetBucketLoggingCommand, GetBucketPolicyStatusCommand, GetBucketLocationCommand } from "@aws-sdk/client-s3";
 import { IAMClient, ListUsersCommand, ListRolesCommand, ListPoliciesCommand, GetPolicyVersionCommand, ListAttachedUserPoliciesCommand, ListAttachedRolePoliciesCommand, ListUserPoliciesCommand, GetUserPolicyCommand, ListRolePoliciesCommand, GetRolePolicyCommand, GetRoleCommand, ListGroupsForUserCommand, ListAttachedGroupPoliciesCommand, GetPolicyCommand } from "@aws-sdk/client-iam";
 import { RDSClient, DescribeDBInstancesCommand, DescribeDBClustersCommand } from "@aws-sdk/client-rds";
 import { STSClient, GetCallerIdentityCommand } from "@aws-sdk/client-sts";
 import { OrganizationsClient, ListAccountsCommand, DescribeOrganizationCommand } from "@aws-sdk/client-organizations";
-
-// AWS SDK imports - Phase 2
 import { EKSClient, ListClustersCommand, DescribeClusterCommand, ListNodegroupsCommand, DescribeNodegroupCommand, ListFargateProfilesCommand, DescribeFargateProfileCommand } from "@aws-sdk/client-eks";
 import { LambdaClient, ListFunctionsCommand, GetFunctionCommand } from "@aws-sdk/client-lambda";
 import { SecretsManagerClient, ListSecretsCommand, DescribeSecretCommand } from "@aws-sdk/client-secrets-manager";
 import { KMSClient, ListKeysCommand, DescribeKeyCommand } from "@aws-sdk/client-kms";
 import { CloudTrailClient, DescribeTrailsCommand, GetTrailStatusCommand } from "@aws-sdk/client-cloudtrail";
-
-// AWS SDK imports - Phase 3 (new services)
 import { DynamoDBClient, ListTablesCommand, DescribeTableCommand, DescribeContinuousBackupsCommand } from "@aws-sdk/client-dynamodb";
 import { APIGatewayClient, GetRestApisCommand, GetStagesCommand, GetResourcesCommand } from "@aws-sdk/client-api-gateway";
 import { CloudFrontClient, ListDistributionsCommand, GetDistributionConfigCommand } from "@aws-sdk/client-cloudfront";
 import { ElastiCacheClient, DescribeCacheClustersCommand, DescribeReplicationGroupsCommand } from "@aws-sdk/client-elasticache";
 import { GuardDutyClient, ListDetectorsCommand, ListFindingsCommand, GetFindingsCommand } from "@aws-sdk/client-guardduty";
-
-// AWS SDK imports - Phase 4 (messaging and identity)
 import { SNSClient, ListTopicsCommand, GetTopicAttributesCommand, ListSubscriptionsByTopicCommand } from "@aws-sdk/client-sns";
 import { SQSClient, ListQueuesCommand, GetQueueAttributesCommand, GetQueueUrlCommand } from "@aws-sdk/client-sqs";
 import { CognitoIdentityClient, ListIdentityPoolsCommand, DescribeIdentityPoolCommand } from "@aws-sdk/client-cognito-identity";
 import { CognitoIdentityProviderClient, ListUserPoolsCommand, DescribeUserPoolCommand } from "@aws-sdk/client-cognito-identity-provider";
-
-// AWS SDK imports - Phase 5 (CloudFormation, EventBridge)
 import { CloudFormationClient, ListStacksCommand, DescribeStacksCommand, ListStackResourcesCommand } from "@aws-sdk/client-cloudformation";
 import { CloudWatchClient, DescribeAlarmsCommand } from "@aws-sdk/client-cloudwatch";
-
-// Report generation imports
 import PDFDocument from "pdfkit";
 import { marked } from "marked";
 import { createObjectCsvWriter } from "csv-writer";
 import * as fs from "fs";
-
-// Utility imports - Caching, Rate Limiting, Retry Logic, Security
 import { cache, withRetry, safeApiCall, rateLimiters, validateRegion, validateInput, auditLogger, withAudit } from "./utils.js";
-
-// Error Handling & Logging Infrastructure (v1.5.7)
 import { logger, performanceTracker } from "./logging.js";
 import { normalizeError, MCPError, ValidationError, formatErrorMarkdown, formatErrorJSON } from "./errors.js";
 import { retry, retryWithTimeout } from "./retry.js";
 
-// Initialize AWS clients with default credentials
 const DEFAULT_REGION = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "us-east-1";
 
-// All AWS regions for multi-region scanning
 const AWS_REGIONS = [
   "us-east-1", "us-east-2", "us-west-1", "us-west-2",
   "eu-west-1", "eu-west-2", "eu-west-3", "eu-central-1", "eu-central-2",
@@ -70,21 +62,18 @@ const AWS_REGIONS = [
   "il-central-1"
 ];
 
-// Common regions for faster scanning (covers 90%+ of deployments)
 const COMMON_REGIONS = [
   "us-east-1", "us-east-2", "us-west-1", "us-west-2",
   "eu-west-1", "eu-west-2", "eu-central-1",
   "ap-south-1", "ap-northeast-1", "ap-southeast-1", "ap-southeast-2"
 ];
 
-// Helper function to resolve region parameter
 function resolveRegions(region: string): string[] {
   if (region === "all") return AWS_REGIONS;
   if (region === "common") return COMMON_REGIONS;
   return [region];
 }
 
-// Multi-region scan wrapper
 async function multiRegionScan<T>(
   region: string,
   scanFn: (r: string) => Promise<T>,
@@ -97,9 +86,7 @@ async function multiRegionScan<T>(
     try {
       const data = await scanFn(r);
       results.push({ region: r, data });
-    } catch (error: any) {
-      // Skip regions with no access or no resources
-    }
+    } catch (error: any) {}
   }
   
   return formatFn(results);
@@ -128,11 +115,10 @@ const cognitoIdpClient = new CognitoIdentityProviderClient({ region: DEFAULT_REG
 const cloudformationClient = new CloudFormationClient({ region: DEFAULT_REGION });
 const cloudwatchClient = new CloudWatchClient({ region: DEFAULT_REGION });
 
-// Server setup
 const server = new Server(
   {
     name: "nimbus-mcp",
-    version: "1.5.6",
+    version: SERVER_VERSION,
   },
   {
     capabilities: {
@@ -142,12 +128,7 @@ const server = new Server(
   }
 );
 
-// ============================================
-// TOOL DEFINITIONS - ORGANIZED BY CATEGORY
-// ============================================
-
 const TOOLS: Tool[] = [
-  // ========== UTILITY TOOLS ==========
   {
     name: "aws_help",
     description: "Get comprehensive help about all AWS penetration testing tools with examples and workflow guidance",
@@ -181,7 +162,6 @@ const TOOLS: Tool[] = [
       },
     },
   },
-  // ========== ENUMERATION & DISCOVERY TOOLS ==========
   {
     name: "aws_enumerate_ec2_instances",
     description: "List all EC2 instances with security details (public IPs, security groups, IAM roles). Use region: 'all' for all regions or 'common' for top 11 regions.",
@@ -207,7 +187,6 @@ const TOOLS: Tool[] = [
       required: ["region"],
     },
   },
-  // ========== SECURITY ANALYSIS & SCANNING TOOLS ==========
   {
     name: "aws_analyze_s3_security",
     description: "Comprehensive S3 analysis: enumerate all buckets OR scan specific bucket for security issues",
@@ -371,7 +350,6 @@ const TOOLS: Tool[] = [
       required: ["region"],
     },
   },
-  // ========== NETWORK & INFRASTRUCTURE SECURITY ==========
   {
     name: "aws_enumerate_eks_clusters",
     description: "List all EKS clusters with security configuration and network settings",
@@ -476,7 +454,6 @@ const TOOLS: Tool[] = [
       required: ["region"],
     },
   },
-  // ========== DATA & ENCRYPTION SECURITY ==========
   {
     name: "aws_analyze_encryption_security",
     description: "KMS keys (rotation, policies) AND DynamoDB tables (encryption, point-in-time recovery, backups)",
@@ -595,7 +572,6 @@ const TOOLS: Tool[] = [
       required: ["region"],
     },
   },
-  // ========== MESSAGING & APPLICATION SECURITY ==========
   {
     name: "aws_analyze_messaging_security",
     description: "SNS topics, SQS queues, and Cognito security (encryption, access policies, MFA, password policies)",
@@ -660,7 +636,6 @@ const TOOLS: Tool[] = [
       required: ["region"],
     },
   },
-  // ========== PHASE 1: INFRASTRUCTURE ANALYSIS TOOLS ==========
   {
     name: "aws_analyze_infrastructure_automation",
     description: "CloudFormation templates (injection risks, IAM permissions) AND EventBridge rules/Lambda persistence mechanisms",
@@ -736,7 +711,6 @@ const TOOLS: Tool[] = [
       required: ["region"],
     },
   },
-  // ========== PHASE 2: ADVANCED PERMISSION ANALYSIS TOOLS ==========
   {
     name: "aws_analyze_iam_trust_chains",
     description: "Analyze IAM role trust relationships for wildcard principals, cross-account access, and unrestricted service access",
@@ -777,7 +751,6 @@ const TOOLS: Tool[] = [
       },
     },
   },
-  // ========== PHASE 3: PERSISTENCE & EVASION DETECTION TOOLS ==========
   {
     name: "aws_detect_persistence_mechanisms",
     description: "Detect persistence backdoors: Lambda layers, EC2 user data, EventBridge triggers, IAM role modifications, access key rotation",
@@ -873,7 +846,6 @@ const TOOLS: Tool[] = [
       required: ["region"],
     },
   },
-  // ========== NEW SECURITY TOOLS ==========
   {
     name: "aws_analyze_cloudwatch_security",
     description: "Analyze CloudWatch configuration for security monitoring gaps: missing alarms, log groups without encryption, insufficient retention, missing metric filters for security events",
@@ -1029,7 +1001,6 @@ const TOOLS: Tool[] = [
       required: ["region"],
     },
   },
-  // ========== KUBERNETES SECURITY TOOLS ==========
   {
     name: "aws_scan_eks_service_accounts",
     description: "Scan EKS cluster for service account security issues: default SA auto-mount, SAs with cluster-wide permissions, IRSA not configured, SA impersonation, legacy tokens. Returns findings with MITRE ATT&CK mappings and kubectl commands.",
@@ -1088,7 +1059,6 @@ const TOOLS: Tool[] = [
       required: ["region", "clusterName"],
     },
   },
-  // ========== MULTI-REGION SCANNING TOOLS ==========
   {
     name: "aws_scan_all_regions",
     description: "Scan multiple AWS regions for resources. Supports: ec2, lambda, rds, eks, secrets, guardduty, elasticache, vpc. Specify custom regions OR use presets ('common'=11 regions, 'all'=30+ regions).",
@@ -1157,7 +1127,6 @@ const TOOLS: Tool[] = [
       },
     },
   },
-  // ========== CACHE MANAGEMENT TOOLS ==========
   {
     name: "aws_cache_stats",
     description: "View cache statistics: hit/miss ratio, cached keys, memory usage. Useful for monitoring performance.",
@@ -1202,7 +1171,6 @@ const TOOLS: Tool[] = [
       },
     },
   },
-  // ========== ATTACK CHAIN & ADVANCED ANALYSIS TOOLS ==========
   {
     name: "aws_build_attack_chains",
     description: "Build multi-step attack chains from IAM findings. Identifies complete attack paths from initial access to privilege escalation, lateral movement, and data exfiltration. Maps to MITRE ATT&CK techniques and calculates blast radius.",
@@ -1322,7 +1290,6 @@ const TOOLS: Tool[] = [
       required: ["region"],
     },
   },
-  // ========== AUDIT & TELEMETRY TOOLS (OWASP MCP08) ==========
   {
     name: "aws_get_audit_logs",
     description: "Retrieve MCP server audit logs for security monitoring and compliance. Shows tool invocations, errors, and security events.",
@@ -1358,7 +1325,6 @@ const TOOLS: Tool[] = [
   },
 ];
 
-// ========== RESPONSE FORMATTING HELPERS ==========
 /**
  * Format response based on requested format (markdown or json)
  * @param data - The data to format (can be markdown string or structured object)
@@ -1370,7 +1336,6 @@ function formatResponse(data: any, format: string | undefined, toolName: string)
   const outputFormat = format || 'markdown';
   
   if (outputFormat === 'json') {
-    // If data is already a string (markdown), wrap it in a JSON structure
     if (typeof data === 'string') {
       return JSON.stringify({
         tool: toolName,
@@ -1382,7 +1347,6 @@ function formatResponse(data: any, format: string | undefined, toolName: string)
         }
       }, null, 2);
     }
-    // If data is already an object, stringify it
     return JSON.stringify({
       tool: toolName,
       format: 'json',
@@ -1391,7 +1355,6 @@ function formatResponse(data: any, format: string | undefined, toolName: string)
     }, null, 2);
   }
   
-  // Default to markdown (or if data is already markdown string)
   if (typeof data === 'string') {
     return data;
   }
@@ -1400,16 +1363,13 @@ function formatResponse(data: any, format: string | undefined, toolName: string)
   return JSON.stringify(data, null, 2);
 }
 
-// Tool handlers
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: TOOLS,
 }));
 
-// Completion handler - provides intelligent auto-suggestions
 server.setRequestHandler(CompleteRequestSchema, async (request) => {
   const { ref, argument } = request.params;
   
-  // Region completions
   if (argument.name === "region" || argument.name === "regions") {
     const partial = argument.value.toLowerCase();
     const suggestions = [
@@ -1426,7 +1386,6 @@ server.setRequestHandler(CompleteRequestSchema, async (request) => {
     };
   }
   
-  // Resource type completions
   if (argument.name === "resourceType") {
     const partial = argument.value.toLowerCase();
     const types = ["ec2", "lambda", "rds", "eks", "secrets", "guardduty", "elasticache", "vpc"];
@@ -1441,7 +1400,6 @@ server.setRequestHandler(CompleteRequestSchema, async (request) => {
     };
   }
   
-  // Format completions
   if (argument.name === "format") {
     const partial = argument.value.toLowerCase();
     const formats = ["markdown", "json", "html", "pdf", "csv"];
@@ -1456,7 +1414,6 @@ server.setRequestHandler(CompleteRequestSchema, async (request) => {
     };
   }
   
-  // Scan mode completions
   if (argument.name === "scanMode") {
     const partial = argument.value.toLowerCase();
     const modes = ["common", "all"];
@@ -1471,7 +1428,6 @@ server.setRequestHandler(CompleteRequestSchema, async (request) => {
     };
   }
   
-  // Severity completions
   if (argument.name === "severity") {
     const partial = argument.value.toUpperCase();
     const severities = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
@@ -1486,7 +1442,6 @@ server.setRequestHandler(CompleteRequestSchema, async (request) => {
     };
   }
   
-  // Framework completions
   if (argument.name === "framework") {
     const partial = argument.value.toLowerCase();
     const frameworks = ["nist", "iso27001", "pci-dss", "hipaa", "soc2", "cis"];
@@ -1501,7 +1456,6 @@ server.setRequestHandler(CompleteRequestSchema, async (request) => {
     };
   }
   
-  // No suggestions for this argument
   return {
     completion: {
       values: [],
@@ -1514,7 +1468,6 @@ server.setRequestHandler(CompleteRequestSchema, async (request) => {
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
-  // Start performance tracking
   const trackingId = performanceTracker.start(name);
   
   // OWASP MCP08: Log tool invocation for audit
@@ -1527,7 +1480,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   
   logger.info(`Tool invoked: ${name}`, { args }, name);
 
-  // ========== OWASP MCP05: Comprehensive Input Validation ==========
   // Helper to validate all common input types
   const v = {
     region: (val: any, allowSpecial = false) => validateRegion(val as string | undefined, allowSpecial),
@@ -1598,7 +1550,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   };
 
   try {
-    // ========== UTILITY TOOLS ==========
     switch (name) {
       case "aws_help": {
         const format = v.outputFormat(args?.format);
@@ -1615,7 +1566,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      // ========== ENUMERATION & DISCOVERY TOOLS ==========
       case "aws_enumerate_ec2_instances": {
         const region = v.regionRequired(args?.region, true);
         const format = v.outputFormat(args?.format);
@@ -1668,7 +1618,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      // ========== NETWORK & INFRASTRUCTURE SECURITY ==========
       case "aws_enumerate_eks_clusters": {
         const region = v.regionRequired(args?.region, false);
         const format = v.outputFormat(args?.format);
@@ -1766,7 +1715,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      // ========== PHASE 2: ADVANCED PERMISSION ANALYSIS TOOLS ==========
       case "aws_analyze_iam_trust_chains": {
         const format = v.outputFormat(args?.format);
         const result = await analyzeIAMTrustChains();
@@ -1779,7 +1727,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      // ========== PHASE 3: PERSISTENCE & EVASION DETECTION TOOLS ==========
       case "aws_detect_persistence_mechanisms": {
         const region = v.regionRequired(args?.region, false);
         const format = v.outputFormat(args?.format);
@@ -1851,7 +1798,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      // ========== KUBERNETES SECURITY TOOLS ==========
       case "aws_scan_eks_service_accounts": {
         const region = v.regionRequired(args?.region, false);
         const clusterName = v.clusterNameRequired(args?.clusterName);
@@ -1868,7 +1814,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      // ========== MULTI-REGION SCANNING TOOLS ==========
       case "aws_scan_all_regions": {
         const resourceType = v.resourceType(args?.resourceType, ['ec2', 'rds', 'lambda', 's3', 'eks', 'all']);
         if (!resourceType) throw new Error("resourceType is required");
@@ -1889,7 +1834,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      // ========== CACHE MANAGEMENT TOOLS ==========
       case "aws_cache_stats": {
         const format = v.outputFormat(args?.format);
         const result = getCacheStats();
@@ -1903,7 +1847,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      // ========== ATTACK CHAIN & ADVANCED ANALYSIS TOOLS ==========
       case "aws_build_attack_chains": {
         const region = v.region(args?.region) || 'us-east-1';
         const principalArn = v.arn(args?.principalArn);
@@ -1937,7 +1880,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      // ========== AUDIT & TELEMETRY TOOLS (OWASP MCP08) ==========
       case "aws_get_audit_logs": {
         const level = v.scanMode(args?.level, ['DEBUG', 'INFO', 'WARN', 'ERROR', 'SECURITY']);
         const tool = v.genericString(args?.tool, 100);
@@ -1994,11 +1936,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
-// ============================================
 // IMPLEMENTATION FUNCTIONS - ORGANIZED BY CATEGORY
-// ============================================
 
-// ========== CACHE MANAGEMENT FUNCTIONS ==========
 
 function getCacheStats(): string {
   const stats = cache.stats();
@@ -2058,7 +1997,6 @@ function clearCache(pattern?: string): string {
   }
 }
 
-// ========== AUDIT & TELEMETRY FUNCTIONS (OWASP MCP08) ==========
 
 function getAuditLogs(level?: string, tool?: string, limit?: number): string {
   const logs = auditLogger.getLogs({
@@ -2072,7 +2010,6 @@ function getAuditLogs(level?: string, tool?: string, limit?: number): string {
   let output = `# 📋 MCP Server Audit Logs\n\n`;
   output += `> OWASP MCP08 Compliance: Audit & Telemetry\n\n`;
   
-  // Statistics
   output += `## 📊 Statistics\n\n`;
   output += `| Metric | Value |\n`;
   output += `|--------|-------|\n`;
@@ -2081,7 +2018,6 @@ function getAuditLogs(level?: string, tool?: string, limit?: number): string {
   output += `| Successful Calls | ${stats.byResult['SUCCESS'] || 0} |\n`;
   output += `| Failed Calls | ${stats.byResult['FAILURE'] || 0} |\n\n`;
   
-  // Tool usage breakdown
   if (Object.keys(stats.byTool).length > 0) {
     output += `## 🔧 Tool Usage\n\n`;
     output += `| Tool | Invocations |\n`;
@@ -2093,7 +2029,6 @@ function getAuditLogs(level?: string, tool?: string, limit?: number): string {
     output += `\n`;
   }
   
-  // Recent logs
   output += `## 📝 Recent Activity (${displayLogs.length} entries)\n\n`;
   
   if (displayLogs.length === 0) {
@@ -2125,7 +2060,6 @@ function getAuditLogs(level?: string, tool?: string, limit?: number): string {
   return output;
 }
 
-// ========== UTILITY FUNCTIONS ==========
 
 function getHelpText(): string {
   return `# AWS Penetration Testing MCP Server v1.0.0
@@ -2283,7 +2217,6 @@ Run \`aws configure\` before using tools. Default region: ${DEFAULT_REGION}
 `;
 }
 
-// ========== ENUMERATION & DISCOVERY IMPLEMENTATIONS ==========
 
 async function whoami(region?: string): Promise<string> {
   const client = new STSClient({ region: region || DEFAULT_REGION });
@@ -2301,7 +2234,6 @@ async function whoami(region?: string): Promise<string> {
 `;
 }
 
-// ========== CONSOLIDATED WRAPPER FUNCTIONS ==========
 
 async function analyzeS3Security(bucketName?: string, scanMode?: string): Promise<string> {
   const mode = scanMode || "both";
@@ -2553,7 +2485,6 @@ async function enumerateEC2InstancesMultiRegion(region: string): Promise<string>
 }
 
 async function enumerateEC2Instances(region: string): Promise<string> {
-  // Check cache first
   const cacheKey = `ec2:instances:${region}`;
   const cached = cache.get<string>(cacheKey);
   if (cached) {
@@ -2632,7 +2563,6 @@ async function enumerateS3Buckets(): Promise<string> {
   return output;
 }
 
-// ========== SECURITY ANALYSIS IMPLEMENTATIONS ==========
 
 // Helper function to get bucket region
 async function getBucketRegion(bucketName: string): Promise<string> {
@@ -2693,7 +2623,6 @@ async function scanS3BucketSecurity(bucketName: string): Promise<string> {
         
         section2 += `- Policy Exists: [YES]\n`;
         
-        // Check for public access in policy
         const hasPublicPrincipal = policyString.includes('"Principal":"*"') || policyString.includes('"Principal": "*"') || policyString.includes('"Principal":{"AWS":"*"}') || policyString.includes('"Principal": {"AWS": "*"}');
         const hasPublicEffect = policyString.includes('"Effect":"Allow"') || policyString.includes('"Effect": "Allow"');
         
@@ -2704,13 +2633,11 @@ async function scanS3BucketSecurity(bucketName: string): Promise<string> {
           section2 += `- Public Access: [SECURE] No wildcard principals\n`;
         }
         
-        // Check for overly permissive actions
         if (policyString.includes('"Action":"s3:*"') || policyString.includes('"Action":["s3:*"]')) {
           findings.push("HIGH: Bucket policy contains wildcard action (s3:*) - overly permissive");
           section2 += `- Wildcard Actions: [WARNING] Policy uses s3:* action\n`;
         }
         
-        // Check for cross-account access
         const accountPattern = /"arn:aws:iam::\d{12}:/g;
         const accounts = policyString.match(accountPattern);
         if (accounts && accounts.length > 0) {
@@ -2749,7 +2676,6 @@ async function scanS3BucketSecurity(bucketName: string): Promise<string> {
       const grantee = grant.Grantee;
       const permission = grant.Permission;
       
-      // Check for public access via ACL
       if (grantee?.URI === "http://acs.amazonaws.com/groups/global/AllUsers") {
         if (permission === "READ") {
           hasPublicRead = true;
@@ -2764,7 +2690,6 @@ async function scanS3BucketSecurity(bucketName: string): Promise<string> {
         }
       }
       
-      // Check for authenticated users (any AWS account)
       if (grantee?.URI === "http://acs.amazonaws.com/groups/global/AuthenticatedUsers") {
         findings.push(`[HIGH] HIGH: Bucket ACL grants ${permission} to all authenticated AWS users`);
       }
@@ -2854,7 +2779,6 @@ async function scanS3BucketSecurity(bucketName: string): Promise<string> {
     output += `## 7. Access Logging: [WARN] Could not retrieve logging status\n\n`;
   }
 
-  // Summary
   output += `## Security Findings Summary (${findings.length})\n\n`;
   if (findings.length === 0) {
     output += `[OK] No security issues found - bucket is well-configured!\n`;
@@ -2896,13 +2820,11 @@ async function enumerateIAMUsers(): Promise<string> {
     output += `- **Created:** ${user.CreateDate?.toISOString()}\n`;
     output += `- **Password Last Used:** ${user.PasswordLastUsed?.toISOString() || "Never/No console access"}\n`;
 
-    // Check for old users
     const daysSinceCreation = user.CreateDate ? Math.floor((Date.now() - user.CreateDate.getTime()) / (1000 * 60 * 60 * 24)) : 0;
     if (daysSinceCreation > 365) {
       findings.push(`[MEDIUM] INFO: User ${user.UserName} created ${daysSinceCreation} days ago - review if still needed`);
     }
 
-    // Check password usage
     const daysSincePasswordUse = user.PasswordLastUsed ? Math.floor((Date.now() - user.PasswordLastUsed.getTime()) / (1000 * 60 * 60 * 24)) : 999;
     if (daysSincePasswordUse > 90 && user.PasswordLastUsed) {
       findings.push(`[HIGH] MEDIUM: User ${user.UserName} hasn't used password in ${daysSincePasswordUse} days - potential inactive account`);
@@ -2920,7 +2842,6 @@ async function enumerateIAMUsers(): Promise<string> {
 }
 
 async function enumerateIAMRoles(): Promise<string> {
-  // Check cache first - IAM is global and changes rarely
   const cacheKey = `iam:roles`;
   const cached = cache.get<string>(cacheKey);
   if (cached) {
@@ -2943,7 +2864,6 @@ async function enumerateIAMRoles(): Promise<string> {
     output += `- **Created:** ${role.CreateDate?.toISOString()}\n`;
     output += `- **Max Session Duration:** ${role.MaxSessionDuration ? `${role.MaxSessionDuration / 3600} hours` : "N/A"}\n`;
 
-    // Check trust policy for wildcards
     const trustPolicy = role.AssumeRolePolicyDocument ? JSON.parse(decodeURIComponent(role.AssumeRolePolicyDocument)) : null;
     if (trustPolicy && JSON.stringify(trustPolicy).includes("*")) {
       findings.push(`[CRITICAL] CRITICAL: Role ${role.RoleName} has wildcard (*) in trust policy - potential privilege escalation risk`);
@@ -3026,11 +2946,9 @@ async function enumerateRDSDatabasesMultiRegion(region: string): Promise<string>
 async function enumerateRDSDatabases(region: string): Promise<string> {
   const client = new RDSClient({ region });
   
-  // Get DB instances
   const instancesCommand = new DescribeDBInstancesCommand({});
   const instancesResponse = await client.send(instancesCommand);
 
-  // Get DB clusters
   const clustersCommand = new DescribeDBClustersCommand({});
   const clustersResponse = await client.send(clustersCommand);
 
@@ -3045,7 +2963,6 @@ async function enumerateRDSDatabases(region: string): Promise<string> {
   output += `**Instances:** ${totalInstances} | **Clusters:** ${totalClusters}\n\n`;
   const findings: string[] = [];
 
-  // Process instances
   for (const db of instancesResponse.DBInstances || []) {
     output += `## Instance: ${db.DBInstanceIdentifier}\n`;
     output += `- **Engine:** ${db.Engine} ${db.EngineVersion}\n`;
@@ -3066,7 +2983,6 @@ async function enumerateRDSDatabases(region: string): Promise<string> {
     }
   }
 
-  // Process clusters
   for (const cluster of clustersResponse.DBClusters || []) {
     output += `## Cluster: ${cluster.DBClusterIdentifier}\n`;
     output += `- **Engine:** ${cluster.Engine} ${cluster.EngineVersion}\n`;
@@ -3104,7 +3020,6 @@ async function enumerateVPCs(region: string): Promise<string> {
     output += `- **Default VPC:** ${vpc.IsDefault ? "Yes" : "No"}\n`;
     output += `- **State:** ${vpc.State}\n`;
 
-    // Get subnets
     const subnetsCommand = new DescribeSubnetsCommand({ Filters: [{ Name: "vpc-id", Values: [vpc.VpcId!] }] });
     const subnetsResponse = await client.send(subnetsCommand);
     
@@ -3141,17 +3056,14 @@ async function enumerateLambdaFunctions(region: string): Promise<string> {
     output += `- **Timeout:** ${func.Timeout} seconds\n`;
     output += `- **Last Modified:** ${func.LastModified}\n`;
 
-    // Check for old runtimes
     if (func.Runtime?.includes("python2") || func.Runtime?.includes("node10") || func.Runtime?.includes("node12")) {
       findings.push(`[CRITICAL] CRITICAL: Lambda ${func.FunctionName} uses deprecated runtime ${func.Runtime} - security risk`);
     }
 
-    // Check environment variables
     if (func.Environment?.Variables && Object.keys(func.Environment.Variables).length > 0) {
       const envVars = Object.keys(func.Environment.Variables);
       output += `- **Environment Variables:** ${envVars.length} (${envVars.join(", ")})\n`;
       
-      // Check for potential secrets in env vars
       const sensitiveKeys = ["PASSWORD", "SECRET", "KEY", "TOKEN", "API_KEY"];
       const hasSensitiveKeys = envVars.some(key => sensitiveKeys.some(s => key.toUpperCase().includes(s)));
       if (hasSensitiveKeys) {
@@ -3193,13 +3105,11 @@ async function analyzeSecurityGroups(region: string): Promise<string> {
     sgOutput += `- **VPC:** ${sg.VpcId || "EC2-Classic"}\n`;
     sgOutput += `- **Description:** ${sg.Description}\n`;
 
-    // Analyze ingress rules
     for (const rule of sg.IpPermissions || []) {
       const fromPort = rule.FromPort;
       const toPort = rule.ToPort;
       const protocol = rule.IpProtocol === "-1" ? "All" : rule.IpProtocol;
 
-      // Check for 0.0.0.0/0 access
       const hasPublicAccess = rule.IpRanges?.some(range => range.CidrIp === "0.0.0.0/0") || false;
       
       if (hasPublicAccess) {
@@ -3237,7 +3147,6 @@ async function checkIAMPolicies(policyArn?: string): Promise<string> {
   const findings: string[] = [];
 
   if (policyArn) {
-    // Analyze specific policy
     output += `Analyzing policy: ${policyArn}\n\n`;
     // Policy analysis would go here
     return output + "[OK] Policy analysis complete";
@@ -3259,7 +3168,6 @@ async function checkIAMPolicies(policyArn?: string): Promise<string> {
     output += `- **Attachment Count:** ${policy.AttachmentCount}\n`;
     output += `- **Created:** ${policy.CreateDate?.toISOString()}\n`;
 
-    // Get policy document
     if (policy.DefaultVersionId) {
       try {
         const versionCommand = new GetPolicyVersionCommand({
@@ -3270,7 +3178,6 @@ async function checkIAMPolicies(policyArn?: string): Promise<string> {
         const policyDoc = versionResponse.PolicyVersion?.Document ? 
           JSON.parse(decodeURIComponent(versionResponse.PolicyVersion.Document)) : null;
 
-        // Check for wildcards
         const docString = JSON.stringify(policyDoc);
         if (docString.includes('"Action":"*"') || docString.includes('"Resource":"*"')) {
           findings.push(`[CRITICAL] CRITICAL: Policy ${policy.PolicyName} contains wildcard permissions - potential privilege escalation`);
@@ -3320,11 +3227,9 @@ async function enumerateEKSClusters(region: string): Promise<string> {
     output += `- **Endpoint:** ${cluster.endpoint}\n`;
     output += `- **Platform Version:** ${cluster.platformVersion}\n`;
     
-    // Check public endpoint
     const isPublic = cluster.resourcesVpcConfig?.endpointPublicAccess;
     output += `- **Public Endpoint:** ${isPublic ? "[WARN] Enabled" : "[OK] Disabled"}\n`;
     
-    // Check network configuration
     const publicCidrs = cluster.resourcesVpcConfig?.publicAccessCidrs || [];
     if (isPublic && publicCidrs.includes("0.0.0.0/0")) {
       findings.push(`[CRITICAL] CRITICAL: EKS cluster ${cluster.name} API server accessible from Internet (0.0.0.0/0)`);
@@ -3635,7 +3540,6 @@ async function generatePDFReport(
   const stream = fs.createWriteStream(outputPath);
   doc.pipe(stream);
 
-  // Title with AWS Orange color
   doc.fontSize(24).fillColor('#FF9900').text('AWS Security Assessment Report', { align: 'center' });
   doc.moveDown();
 
@@ -3684,7 +3588,6 @@ async function generatePDFReport(
       doc.fontSize(14).fillColor('#FF9900').text(` ${finding.category}`);
       doc.moveDown(0.5);
       
-      // Parse findings from data
       const lines = finding.data.split('\n').slice(0, 20); // Limit lines per category
       for (const line of lines) {
         if (line.includes('[CRITICAL] CRITICAL')) {
@@ -3723,7 +3626,6 @@ async function generatePDFReport(
     }
   }
 
-  // Footer
   doc.moveDown(2);
   doc.fontSize(8).fillColor('#666')
     .text('Generated by Nimbus - AWS Security Assessment MCP v1.4.2', { align: 'center' })
@@ -3777,7 +3679,6 @@ async function generateCSVReport(findings: any[], outputPath: string): Promise<v
   await csvWriter.writeRecords(records);
 }
 
-// ============ NEW SERVICE SECURITY SCANNERS ============
 
 async function scanDynamoDBSecurity(region: string, tableName?: string): Promise<string> {
   const client = new DynamoDBClient({ region });
@@ -3802,7 +3703,6 @@ async function scanDynamoDBSecurity(region: string, tableName?: string): Promise
         const descCmd = new DescribeTableCommand({ TableName: table });
         const tableDesc = await client.send(descCmd);
         
-        // Check encryption
         if (!tableDesc.Table?.SSEDescription || tableDesc.Table.SSEDescription.Status !== "ENABLED") {
           findings.push("[CRITICAL] CRITICAL: Encryption at rest NOT enabled");
           criticalCount++;
@@ -3810,7 +3710,6 @@ async function scanDynamoDBSecurity(region: string, tableName?: string): Promise
           findings.push(`[LOW] Encryption: ${tableDesc.Table.SSEDescription.SSEType} (${tableDesc.Table.SSEDescription.Status})`);
         }
         
-        // Check point-in-time recovery
         const backupCmd = new DescribeContinuousBackupsCommand({ TableName: table });
         const backup = await client.send(backupCmd);
         
@@ -3821,11 +3720,9 @@ async function scanDynamoDBSecurity(region: string, tableName?: string): Promise
           findings.push("[LOW] Point-in-time recovery: ENABLED");
         }
         
-        // Check billing mode
         const billingMode = tableDesc.Table?.BillingModeSummary?.BillingMode || "PROVISIONED";
         findings.push(`[MEDIUM] Billing Mode: ${billingMode}`);
         
-        // Check table status
         findings.push(`Status: ${tableDesc.Table?.TableStatus}`);
         findings.push(`Item Count: ${tableDesc.Table?.ItemCount || 0}`);
         
@@ -3867,7 +3764,6 @@ async function scanAPIGatewaySecurity(region: string): Promise<string> {
       const findings: string[] = [];
       
       try {
-        // Get stages
         const stagesCmd = new GetStagesCommand({ restApiId: api.id });
         const stages = await client.send(stagesCmd);
         
@@ -3877,7 +3773,6 @@ async function scanAPIGatewaySecurity(region: string): Promise<string> {
           for (const stage of stages.item) {
             findings.push(`\n### Stage: ${stage.stageName}`);
             
-            // Check logging
             if (!stage.accessLogSettings || !stage.accessLogSettings.destinationArn) {
               findings.push("[HIGH] HIGH: Access logging NOT enabled (no audit trail)");
               highCount++;
@@ -3885,7 +3780,6 @@ async function scanAPIGatewaySecurity(region: string): Promise<string> {
               findings.push("[LOW] Access logging: ENABLED");
             }
             
-            // Check throttling
             if (!stage.methodSettings || Object.keys(stage.methodSettings).length === 0) {
               findings.push("[HIGH] HIGH: Throttling NOT configured (DDoS risk)");
               highCount++;
@@ -3893,13 +3787,11 @@ async function scanAPIGatewaySecurity(region: string): Promise<string> {
               findings.push("[LOW] Throttling: Configured in method settings");
             }
             
-            // Check API key requirement
             if (!stage.methodSettings || Object.keys(stage.methodSettings).length === 0) {
               findings.push("[MEDIUM] MEDIUM: No method-level security configured");
               mediumCount++;
             }
             
-            // Check client certificate
             if (!stage.clientCertificateId) {
               findings.push("[MEDIUM] MEDIUM: Client certificate NOT configured");
               mediumCount++;
@@ -3956,7 +3848,6 @@ async function scanCloudFrontSecurity(): Promise<string> {
           continue;
         }
         
-        // Check SSL/TLS
         if (distConfig.ViewerCertificate?.MinimumProtocolVersion && 
             (distConfig.ViewerCertificate.MinimumProtocolVersion.includes("SSLv3") || 
              distConfig.ViewerCertificate.MinimumProtocolVersion.includes("TLSv1.0") ||
@@ -3967,7 +3858,6 @@ async function scanCloudFrontSecurity(): Promise<string> {
           findings.push(`[LOW] TLS Version: ${distConfig.ViewerCertificate?.MinimumProtocolVersion || "TLSv1.2"}`);
         }
         
-        // Check HTTPS enforcement
         if (distConfig.DefaultCacheBehavior?.ViewerProtocolPolicy !== "https-only" && 
             distConfig.DefaultCacheBehavior?.ViewerProtocolPolicy !== "redirect-to-https") {
           findings.push("[CRITICAL] CRITICAL: HTTPS NOT enforced (allows HTTP traffic)");
@@ -3976,7 +3866,6 @@ async function scanCloudFrontSecurity(): Promise<string> {
           findings.push(`[LOW] HTTPS Policy: ${distConfig.DefaultCacheBehavior?.ViewerProtocolPolicy}`);
         }
         
-        // Check origin access
         if (distConfig.Origins?.Items) {
           for (const origin of distConfig.Origins.Items) {
             if (origin.S3OriginConfig && !origin.S3OriginConfig.OriginAccessIdentity) {
@@ -3986,7 +3875,6 @@ async function scanCloudFrontSecurity(): Promise<string> {
           }
         }
         
-        // Check WAF
         if (!distConfig.WebACLId || distConfig.WebACLId === "") {
           findings.push("[MEDIUM] MEDIUM: WAF NOT enabled (no application firewall)");
           mediumCount++;
@@ -3994,14 +3882,12 @@ async function scanCloudFrontSecurity(): Promise<string> {
           findings.push(`[LOW] WAF: ${distConfig.WebACLId}`);
         }
         
-        // Check geo restrictions
         if (!distConfig.Restrictions?.GeoRestriction || distConfig.Restrictions.GeoRestriction.RestrictionType === "none") {
           findings.push("[MEDIUM] INFO: No geo-restrictions configured");
         } else {
           findings.push(`[MEDIUM] Geo-Restrictions: ${distConfig.Restrictions.GeoRestriction.RestrictionType} (${distConfig.Restrictions.GeoRestriction.Quantity} countries)`);
         }
         
-        // Check logging
         if (!distConfig.Logging || !distConfig.Logging.Enabled) {
           findings.push("[MEDIUM] MEDIUM: Access logging NOT enabled");
           mediumCount++;
@@ -4035,7 +3921,6 @@ async function scanElastiCacheSecurity(region: string): Promise<string> {
   try {
     let criticalCount = 0, highCount = 0, mediumCount = 0;
     
-    // Check Redis/Memcached clusters
     const clustersCmd = new DescribeCacheClustersCommand({ ShowCacheNodeInfo: true });
     const clusters = await client.send(clustersCmd);
     
@@ -4046,7 +3931,6 @@ async function scanElastiCacheSecurity(region: string): Promise<string> {
         output += `\n### Cluster: ${cluster.CacheClusterId} (${cluster.Engine})\n`;
         const findings: string[] = [];
         
-        // Check encryption at rest
         if (!cluster.AtRestEncryptionEnabled) {
           findings.push("[CRITICAL] CRITICAL: Encryption at rest NOT enabled");
           criticalCount++;
@@ -4054,7 +3938,6 @@ async function scanElastiCacheSecurity(region: string): Promise<string> {
           findings.push("[LOW] Encryption at rest: ENABLED");
         }
         
-        // Check encryption in transit
         if (!cluster.TransitEncryptionEnabled) {
           findings.push("[CRITICAL] CRITICAL: Encryption in transit NOT enabled (data exposed on network)");
           criticalCount++;
@@ -4062,7 +3945,6 @@ async function scanElastiCacheSecurity(region: string): Promise<string> {
           findings.push("[LOW] Encryption in transit: ENABLED");
         }
         
-        // Check auth token (Redis only)
         if (cluster.Engine === "redis" && !cluster.AuthTokenEnabled) {
           findings.push("[HIGH] HIGH: Auth token NOT enabled (no password authentication)");
           highCount++;
@@ -4070,7 +3952,6 @@ async function scanElastiCacheSecurity(region: string): Promise<string> {
           findings.push("[LOW] Auth token: ENABLED");
         }
         
-        // Check public access
         if (cluster.CacheNodes && cluster.CacheNodes.length > 0) {
           findings.push(`Cache Nodes: ${cluster.CacheNodes.length}`);
           findings.push(`Subnet Group: ${cluster.CacheSubnetGroupName || "None"}`);
@@ -4083,7 +3964,6 @@ async function scanElastiCacheSecurity(region: string): Promise<string> {
       }
     }
     
-    // Check replication groups
     const replCmd = new DescribeReplicationGroupsCommand({});
     const replGroups = await client.send(replCmd);
     
@@ -4160,7 +4040,6 @@ async function getGuardDutyFindings(region: string, severityFilter?: string): Pr
         continue;
       }
       
-      // Get finding details
       const getFindingsCmd = new GetFindingsCommand({
         DetectorId: detectorId,
         FindingIds: findingsList.FindingIds.slice(0, 50) // Limit to 50 findings
@@ -4260,7 +4139,6 @@ async function scanSNSSecurity(region: string): Promise<string> {
           continue;
         }
         
-        // Check encryption
         if (!attrs.Attributes.KmsMasterKeyId || attrs.Attributes.KmsMasterKeyId === "") {
           findings.push("[CRITICAL] CRITICAL: Server-side encryption NOT enabled (messages in plaintext)");
           criticalCount++;
@@ -4268,7 +4146,6 @@ async function scanSNSSecurity(region: string): Promise<string> {
           findings.push(`[LOW] Encryption: KMS key ${attrs.Attributes.KmsMasterKeyId}`);
         }
         
-        // Check access policy
         const policy = attrs.Attributes.Policy;
         if (policy) {
           try {
@@ -4278,7 +4155,6 @@ async function scanSNSSecurity(region: string): Promise<string> {
             
             if (policyObj.Statement) {
               for (const statement of policyObj.Statement) {
-                // Check for wildcard principal
                 if (statement.Effect === "Allow" && 
                     (statement.Principal === "*" || 
                      statement.Principal?.AWS === "*" ||
@@ -4288,7 +4164,6 @@ async function scanSNSSecurity(region: string): Promise<string> {
                   hasPublicAccess = true;
                 }
                 
-                // Check for wildcard actions
                 if (statement.Effect === "Allow" && 
                     (statement.Action === "*" || 
                      (Array.isArray(statement.Action) && statement.Action.includes("*")))) {
@@ -4296,7 +4171,6 @@ async function scanSNSSecurity(region: string): Promise<string> {
                   highCount++;
                 }
                 
-                // Check for cross-account access
                 if (statement.Principal?.AWS && typeof statement.Principal.AWS === "string") {
                   const accountId = statement.Principal.AWS.split(":")[4];
                   const currentAccount = topic.TopicArn.split(":")[4];
@@ -4317,14 +4191,12 @@ async function scanSNSSecurity(region: string): Promise<string> {
           }
         }
         
-        // Check subscriptions
         const subsCmd = new ListSubscriptionsByTopicCommand({ TopicArn: topic.TopicArn });
         const subs = await client.send(subsCmd);
         
         if (subs.Subscriptions && subs.Subscriptions.length > 0) {
           findings.push(`Subscriptions: ${subs.Subscriptions.length}`);
           
-          // Check for HTTP endpoints (should be HTTPS)
           for (const sub of subs.Subscriptions) {
             if (sub.Protocol === "http") {
               findings.push(`[HIGH] HIGH: Subscription uses HTTP (not HTTPS): ${sub.Endpoint}`);
@@ -4387,7 +4259,6 @@ async function scanSQSSecurity(region: string): Promise<string> {
           continue;
         }
         
-        // Check encryption
         if (!attrs.Attributes.KmsMasterKeyId || attrs.Attributes.KmsMasterKeyId === "") {
           findings.push("[CRITICAL] CRITICAL: Server-side encryption NOT enabled (messages in plaintext)");
           criticalCount++;
@@ -4395,7 +4266,6 @@ async function scanSQSSecurity(region: string): Promise<string> {
           findings.push(`[LOW] Encryption: KMS key ${attrs.Attributes.KmsMasterKeyId}`);
         }
         
-        // Check access policy
         const policy = attrs.Attributes.Policy;
         if (policy) {
           try {
@@ -4426,7 +4296,6 @@ async function scanSQSSecurity(region: string): Promise<string> {
           }
         }
         
-        // Check dead letter queue
         if (!attrs.Attributes.RedrivePolicy || attrs.Attributes.RedrivePolicy === "") {
           findings.push("[MEDIUM] MEDIUM: Dead letter queue NOT configured (message loss risk)");
           mediumCount++;
@@ -4434,7 +4303,6 @@ async function scanSQSSecurity(region: string): Promise<string> {
           findings.push("[LOW] Dead Letter Queue: Configured");
         }
         
-        // Check message retention
         const retentionSeconds = parseInt(attrs.Attributes.MessageRetentionPeriod || "0");
         const retentionDays = Math.floor(retentionSeconds / 86400);
         
@@ -4444,10 +4312,8 @@ async function scanSQSSecurity(region: string): Promise<string> {
           findings.push(`Message retention: ${retentionDays} days`);
         }
         
-        // Check visibility timeout
         findings.push(`Visibility timeout: ${attrs.Attributes.VisibilityTimeout}s`);
         
-        // Check approximate messages
         const approxMessages = attrs.Attributes.ApproximateNumberOfMessages || "0";
         findings.push(`Approximate messages: ${approxMessages}`);
         
@@ -4477,7 +4343,6 @@ async function scanCognitoSecurity(region: string): Promise<string> {
   
   let criticalCount = 0, highCount = 0, mediumCount = 0;
   
-  // Check Identity Pools
   try {
     output += "## Identity Pools\n\n";
     const listIdPoolsCmd = new ListIdentityPoolsCommand({ MaxResults: 60 });
@@ -4497,7 +4362,6 @@ async function scanCognitoSecurity(region: string): Promise<string> {
           const describeCmd = new DescribeIdentityPoolCommand({ IdentityPoolId: pool.IdentityPoolId });
           const poolDetails = await identityClient.send(describeCmd);
           
-          // Check unauthenticated access
           if (poolDetails.AllowUnauthenticatedIdentities === true) {
             findings.push("[CRITICAL] CRITICAL: Unauthenticated access ENABLED (anonymous users can assume IAM role)");
             criticalCount++;
@@ -4505,18 +4369,15 @@ async function scanCognitoSecurity(region: string): Promise<string> {
             findings.push("[LOW] Unauthenticated access: DISABLED");
           }
           
-          // Check if classic flow is enabled
           if (poolDetails.AllowClassicFlow === true) {
             findings.push("[HIGH] HIGH: Classic flow enabled (deprecated authentication method)");
             highCount++;
           }
           
-          // Check identity providers
           if (poolDetails.CognitoIdentityProviders && poolDetails.CognitoIdentityProviders.length > 0) {
             findings.push(`Identity Providers: ${poolDetails.CognitoIdentityProviders.length} configured`);
           }
           
-          // Check supported login providers
           if (poolDetails.SupportedLoginProviders && Object.keys(poolDetails.SupportedLoginProviders).length > 0) {
             findings.push(`External providers: ${Object.keys(poolDetails.SupportedLoginProviders).join(", ")}`);
           }
@@ -4533,7 +4394,6 @@ async function scanCognitoSecurity(region: string): Promise<string> {
     output += `[FAIL] Error listing identity pools: ${error.message}\n\n`;
   }
   
-  // Check User Pools
   try {
     output += "## User Pools\n\n";
     const listUserPoolsCmd = new ListUserPoolsCommand({ MaxResults: 60 });
@@ -4559,7 +4419,6 @@ async function scanCognitoSecurity(region: string): Promise<string> {
             continue;
           }
           
-          // Check MFA configuration
           if (poolDetails.UserPool.MfaConfiguration === "OFF") {
             findings.push("[HIGH] HIGH: Multi-factor authentication (MFA) NOT enabled");
             highCount++;
@@ -4570,7 +4429,6 @@ async function scanCognitoSecurity(region: string): Promise<string> {
             findings.push(`[LOW] MFA: ${poolDetails.UserPool.MfaConfiguration}`);
           }
           
-          // Check password policy
           const passwordPolicy = poolDetails.UserPool.Policies?.PasswordPolicy;
           if (passwordPolicy) {
             if ((passwordPolicy.MinimumLength || 0) < 8) {
@@ -4590,16 +4448,13 @@ async function scanCognitoSecurity(region: string): Promise<string> {
             highCount++;
           }
           
-          // Check account recovery
           const accountRecovery = poolDetails.UserPool.AccountRecoverySetting;
           if (accountRecovery?.RecoveryMechanisms) {
             findings.push(`Account recovery: ${accountRecovery.RecoveryMechanisms.length} methods configured`);
           }
           
-          // Check user pool status
           findings.push(`Status: ${poolDetails.UserPool.Status}`);
           
-          // Check email verification
           const autoVerifiedAttributes = poolDetails.UserPool.AutoVerifiedAttributes;
           if (autoVerifiedAttributes && autoVerifiedAttributes.includes("email")) {
             findings.push("[LOW] Email verification: Enabled");
@@ -4628,9 +4483,7 @@ async function scanCognitoSecurity(region: string): Promise<string> {
   return output;
 }
 
-// ============================================
 // TRA REPORT - SECURITY ASSESSMENT
-// ============================================
 
 async function generateTRAReport(
   region: string, 
@@ -4990,7 +4843,6 @@ async function scanCloudFormationSecurity(region: string): Promise<string> {
       output += `Created: ${stackData.CreationTime}\n`;
       output += `Resources: ${resourceList.length}\n\n`;
 
-      // Check for potentially dangerous resources
       for (const resource of resourceList) {
         const resType = resource.ResourceType || "";
         const resLogical = resource.LogicalResourceId || "";
@@ -5181,7 +5033,6 @@ async function scanEventBridgeSecurity(region: string): Promise<string> {
           output += `Function: ${funcName}\n`;
           output += `Role: ${funcRole}\n`;
 
-          // Check for CloudWatch Events/EventBridge environment indicators
           if (Object.keys(env).some(k => k.includes("EVENT") || k.includes("TRIGGER"))) {
             findings.push({
               Function: funcName,
@@ -5192,7 +5043,6 @@ async function scanEventBridgeSecurity(region: string): Promise<string> {
             output += `Trigger Type: EventBridge (suspected)\n`;
           }
 
-          // Check for scheduled execution indicators
           if (Object.keys(env).some(k => k.includes("SCHEDULE") || k.includes("CRON"))) {
             findings.push({
               Function: funcName,
@@ -5235,7 +5085,6 @@ async function scanEventBridgeSecurity(region: string): Promise<string> {
   }
 }
 
-// ============ PHASE 2: ADVANCED PERMISSION ANALYSIS ============
 
 async function analyzeIAMTrustChains(): Promise<string> {
   let output = `# IAM Trust Relationship Analysis\n\n`;
@@ -5265,21 +5114,18 @@ async function analyzeIAMTrustChains(): Promise<string> {
       for (const statement of trustPolicy.Statement) {
         if (statement.Effect !== "Allow") continue;
         
-        // Check for wildcard principal
         if (statement.Principal === "*" || statement.Principal?.AWS === "*") {
           findings.push(`[CRITICAL] ${role.RoleName}: Wildcard principal (*) - anyone can assume`);
           criticalCount++;
           hasIssue = true;
         }
         
-        // Check for service principals
         const principals = Array.isArray(statement.Principal?.AWS)
           ? statement.Principal.AWS
           : statement.Principal?.AWS ? [statement.Principal.AWS] : [];
         
         for (const principal of principals) {
           if (typeof principal === "string" && principal.includes(".amazonaws.com")) {
-            // Check which service
             const service = principal.split(".")[0];
             if (["ec2", "lambda", "ecs", "sts"].includes(service)) {
               if (!statement.Condition) {
@@ -5290,7 +5136,6 @@ async function analyzeIAMTrustChains(): Promise<string> {
             }
           }
           
-          // Check for cross-account trusts
           if (typeof principal === "string" && principal.includes("arn:aws:iam::")) {
             const principalAccount = principal.split("::")[1]?.split(":")[0];
             findings.push(`[MEDIUM] ${role.RoleName}: Cross-account trust from ${principalAccount}`);
@@ -5342,18 +5187,15 @@ async function findOverlyPermissiveRoles(): Promise<string> {
     for (const role of rolesResponse.Roles) {
       let findings2: string[] = [];
       
-      // Check attached policies
       const attachedCmd = new ListAttachedRolePoliciesCommand({ RoleName: role.RoleName! });
       const attached = await iamClient.send(attachedCmd);
       
       for (const policy of attached.AttachedPolicies || []) {
-        // Check for AWS managed admin policies
         if (policy.PolicyArn?.includes("AdministratorAccess")) {
           findings2.push(`[CRITICAL] ${role.RoleName}: Attached to AdministratorAccess managed policy`);
           criticalCount++;
         }
         
-        // Check policy name for suspicious patterns
         const policyName = policy.PolicyName || "";
         for (const suffix of riskySuffixes) {
           if (policyName.includes(suffix)) {
@@ -5364,7 +5206,6 @@ async function findOverlyPermissiveRoles(): Promise<string> {
         }
       }
       
-      // Check inline policies
       const inlineCmd = new ListRolePoliciesCommand({ RoleName: role.RoleName! });
       const inline = await iamClient.send(inlineCmd);
       
@@ -5383,7 +5224,6 @@ async function findOverlyPermissiveRoles(): Promise<string> {
               const resource = Array.isArray(statement.Resource) ? statement.Resource : [statement.Resource];
               const action = Array.isArray(statement.Action) ? statement.Action : [statement.Action];
               
-              // Check for wildcard resource and action
               if (resource.includes("*") && action.includes("*")) {
                 findings2.push(`[CRITICAL] ${role.RoleName}: Has unrestricted permissions (*:* on *)`);
                 criticalCount++;
@@ -5392,7 +5232,6 @@ async function findOverlyPermissiveRoles(): Promise<string> {
                 highCount++;
               }
               
-              // Check for dangerous actions
               const dangerousActions = [
                 "iam:*", "ec2:*", "s3:*", "rds:*",
                 "iam:CreateUser", "iam:AttachUserPolicy",
@@ -5435,7 +5274,6 @@ async function findOverlyPermissiveRoles(): Promise<string> {
   return output;
 }
 
-// ============ PHASE 3: PERSISTENCE & EVASION DETECTION ============
 
 async function detectPersistenceMechanisms(region: string): Promise<string> {
   let output = `# Persistence Mechanism Detection\n\n`;
@@ -5457,7 +5295,6 @@ async function detectPersistenceMechanisms(region: string): Promise<string> {
     for (const user of users.Users || []) {
       const userName = user.UserName!;
       try {
-        // Check for old access keys (older than 90 days)
         const userAge = user.CreateDate ? Math.floor((Date.now() - user.CreateDate.getTime()) / (1000 * 60 * 60 * 24)) : 0;
         if (userAge > 90) {
           findings.push(`[CRITICAL] User '${userName}': Account created ${userAge} days ago - potential persistence vector`);
@@ -5604,7 +5441,6 @@ async function detectMFABypassVectors(region: string): Promise<string> {
         const poolDetails = await idpClient.send(describeCmd);
         
         const mfaConfig = poolDetails.UserPool?.MfaConfiguration;
-        // Check if MFA is not explicitly REQUIRED
         if (!mfaConfig || String(mfaConfig).toLowerCase() !== 'required') {
           mfaNotRequired++;
         }
@@ -5625,9 +5461,7 @@ async function detectMFABypassVectors(region: string): Promise<string> {
   return output;
 }
 
-// ============================================
 // NEW SECURITY TOOL IMPLEMENTATIONS
-// ============================================
 
 /**
  * Analyze CloudWatch security configuration
@@ -5644,7 +5478,6 @@ async function analyzeCloudWatchSecurity(region: string): Promise<string> {
     output += `## CloudWatch Alarms\n\n`;
     output += `**Total alarms:** ${alarms.MetricAlarms?.length || 0}\n\n`;
 
-    // Check for critical security alarms
     const securityAlarmPatterns = [
       'unauthorized', 'root', 'iam', 'security', 'alert', 'breach', 'suspicious'
     ];
@@ -5671,7 +5504,6 @@ async function analyzeCloudWatchSecurity(region: string): Promise<string> {
       output += `\n`;
     }
 
-    // Check for disabled alarms
     const disabledAlarms = alarms.MetricAlarms?.filter(a => !a.ActionsEnabled) || [];
     if (disabledAlarms.length > 0) {
       output += `[WARN] **Alarms with disabled actions:** ${disabledAlarms.length}\n`;
@@ -5737,10 +5569,8 @@ async function scanSSMSecurity(region: string): Promise<string> {
   return output;
 }
 
-// ============================================================================
 // ATTACK CHAIN BUILDER & ADVANCED PRIVILEGE ESCALATION ANALYSIS
 // Based on Heimdall patterns and Rhino Security Labs research
-// ============================================================================
 
 interface PrivescPattern {
   id: string;
@@ -5778,7 +5608,6 @@ interface AttackChain {
 
 // 50+ Privilege Escalation Patterns (Rhino Security Labs + Heimdall)
 const PRIVESC_PATTERNS: PrivescPattern[] = [
-  // === PASSROLE ABUSE PATTERNS ===
   {
     id: 'passrole-lambda',
     name: 'PassRole to Lambda',
@@ -5879,7 +5708,6 @@ const PRIVESC_PATTERNS: PrivescPattern[] = [
 2. aws ecs run-task --cluster default --task-definition privesc`,
     remediation: 'Restrict ECS task roles and cluster access'
   },
-  // === POLICY MANIPULATION PATTERNS ===
   {
     id: 'attach-admin-policy',
     name: 'Attach Administrator Policy',
@@ -5956,7 +5784,6 @@ const PRIVESC_PATTERNS: PrivescPattern[] = [
     exploitation: `aws iam set-default-policy-version --policy-arn arn:aws:iam::ACCOUNT:policy/MY_POLICY --version-id v2`,
     remediation: 'Deny SetDefaultPolicyVersion via SCP'
   },
-  // === CREDENTIAL ACCESS PATTERNS ===
   {
     id: 'create-access-key',
     name: 'Create Access Key',
@@ -6005,7 +5832,6 @@ const PRIVESC_PATTERNS: PrivescPattern[] = [
     exploitation: `aws iam update-assume-role-policy --role-name ADMIN_ROLE --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::ACCOUNT:user/ATTACKER"},"Action":"sts:AssumeRole"}]}'`,
     remediation: 'Restrict UpdateAssumeRolePolicy via SCP'
   },
-  // === EKS ABUSE PATTERNS ===
   {
     id: 'eks-irsa-abuse',
     name: 'IRSA Pod Execution Abuse',
@@ -6079,7 +5905,6 @@ const PRIVESC_PATTERNS: PrivescPattern[] = [
 3. aws eks list-nodegroups --cluster-name CLUSTER`,
     remediation: 'Apply least privilege for EKS describe permissions'
   },
-  // === LAMBDA ABUSE PATTERNS ===
   {
     id: 'lambda-update-code',
     name: 'Update Lambda Code',
@@ -6120,7 +5945,6 @@ const PRIVESC_PATTERNS: PrivescPattern[] = [
     exploitation: `aws lambda get-function-configuration --function-name TARGET_FN --query "Environment.Variables"`,
     remediation: 'Use Secrets Manager instead of env vars'
   },
-  // === SSM ABUSE PATTERNS ===
   {
     id: 'ssm-run-command',
     name: 'SSM Run Command',
@@ -6159,7 +5983,6 @@ const PRIVESC_PATTERNS: PrivescPattern[] = [
 2. aws ssm get-parameter --name /secrets/db-password --with-decryption`,
     remediation: 'Restrict parameter access by path'
   },
-  // === S3 ABUSE PATTERNS ===
   {
     id: 's3-data-exfil',
     name: 'S3 Data Exfiltration',
@@ -6184,7 +6007,6 @@ const PRIVESC_PATTERNS: PrivescPattern[] = [
     exploitation: `aws s3api put-bucket-policy --bucket TARGET_BUCKET --policy '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":"*","Action":"s3:GetObject","Resource":"arn:aws:s3:::TARGET_BUCKET/*"}]}'`,
     remediation: 'Use S3 Block Public Access, restrict PutBucketPolicy'
   },
-  // === SECRETS MANAGER ABUSE ===
   {
     id: 'secrets-manager-get',
     name: 'Get Secret Value',
@@ -6199,7 +6021,6 @@ const PRIVESC_PATTERNS: PrivescPattern[] = [
 2. aws secretsmanager get-secret-value --secret-id prod/database/credentials`,
     remediation: 'Restrict secret access by resource ARN'
   },
-  // === CLOUDTRAIL EVASION ===
   {
     id: 'cloudtrail-stop',
     name: 'Stop CloudTrail Logging',
@@ -6357,7 +6178,6 @@ async function buildAttackChains(region: string = 'us-east-1', principalArn?: st
   const minSeverityNum = severityOrder[minSeverity as keyof typeof severityOrder] || 2;
   
   try {
-    // Get all IAM users and roles
     const usersCmd = new ListUsersCommand({});
     const users = await iamClient.send(usersCmd);
     
@@ -6385,11 +6205,9 @@ async function buildAttackChains(region: string = 'us-east-1', principalArn?: st
     output += `- **Users analyzed:** ${principals.filter(p => p.type === 'User').length}\n`;
     output += `- **Roles analyzed:** ${principals.filter(p => p.type === 'Role').length}\n\n`;
     
-    // Analyze each principal for attack chains
     for (const principal of principals.slice(0, 20)) { // Limit for performance
       const permissions = await getPrincipalEffectivePermissions(principal.arn, principal.type);
       
-      // Check for each attack chain template
       for (const template of ATTACK_CHAIN_TEMPLATES) {
         const hasRequired = template.requiredPermissions.every(perm => 
           permissions.some(p => matchesPermission(p, perm))
@@ -6437,7 +6255,6 @@ async function buildAttackChains(region: string = 'us-east-1', principalArn?: st
     } else {
       output += `## 🚨 Attack Chains Identified: ${chains.length}\n\n`;
       
-      // Summary table
       output += `| Chain | Principal | Blast Radius | Severity |\n`;
       output += `|-------|-----------|--------------|----------|\n`;
       for (const chain of chains.slice(0, 10)) {
@@ -6630,7 +6447,6 @@ async function analyzeEKSAttackSurface(region: string, clusterName?: string): Pr
   try {
     const eksClient = new EKSClient({ region });
     
-    // Get clusters to analyze
     let clusters: string[] = [];
     if (clusterName) {
       clusters = [clusterName];
@@ -6664,7 +6480,6 @@ async function analyzeEKSAttackSurface(region: string, clusterName?: string): Pr
         output += `**Platform Version:** ${c.platformVersion}\n`;
         output += `**Role ARN:** \`${c.roleArn}\`\n\n`;
         
-        // === ENDPOINT SECURITY ===
         output += `#### 🌐 Endpoint Security\n\n`;
         const vpc = c.resourcesVpcConfig;
         
@@ -6686,7 +6501,6 @@ async function analyzeEKSAttackSurface(region: string, clusterName?: string): Pr
         }
         output += `\n`;
         
-        // === LOGGING ===
         output += `#### 📝 Audit Logging\n\n`;
         const logging = c.logging?.clusterLogging?.[0];
         if (logging?.enabled) {
@@ -6696,7 +6510,6 @@ async function analyzeEKSAttackSurface(region: string, clusterName?: string): Pr
         }
         output += `\n`;
         
-        // === ENCRYPTION ===
         output += `#### 🔐 Secrets Encryption\n\n`;
         if (c.encryptionConfig && c.encryptionConfig.length > 0) {
           output += `- [OK] Secrets encryption enabled\n`;
@@ -6708,7 +6521,6 @@ async function analyzeEKSAttackSurface(region: string, clusterName?: string): Pr
         }
         output += `\n`;
         
-        // === IRSA ANALYSIS ===
         output += `#### 🔑 IRSA (IAM Roles for Service Accounts)\n\n`;
         if (c.identity?.oidc?.issuer) {
           output += `- [OK] OIDC provider configured\n`;
@@ -6728,7 +6540,6 @@ async function analyzeEKSAttackSurface(region: string, clusterName?: string): Pr
           output += `- Pods may use node IAM role (broader access)\n\n`;
         }
         
-        // === NODE ROLE ANALYSIS ===
         output += `#### 🖥️ Node Role Security\n\n`;
         output += `**Node Role Credential Theft:**\n`;
         output += `If an attacker gains pod access, they can steal node credentials via IMDS.\n\n`;
@@ -6740,7 +6551,6 @@ async function analyzeEKSAttackSurface(region: string, clusterName?: string): Pr
         output += `curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/iam/security-credentials/$ROLE\n`;
         output += `\`\`\`\n\n`;
         
-        // === NODEGROUPS ===
         output += `#### 📦 Node Groups\n\n`;
         try {
           const ngCmd = new ListNodegroupsCommand({ clusterName: cluster });
@@ -6757,7 +6567,6 @@ async function analyzeEKSAttackSurface(region: string, clusterName?: string): Pr
               output += `  - Instance Types: ${nodegroup.instanceTypes?.join(', ')}\n`;
               output += `  - AMI Type: ${nodegroup.amiType}\n`;
               
-              // Check for launch template (custom user data)
               if (nodegroup.launchTemplate) {
                 output += `  - [WARN] Custom launch template - check user data\n`;
               }
@@ -6768,7 +6577,6 @@ async function analyzeEKSAttackSurface(region: string, clusterName?: string): Pr
         }
         output += `\n`;
         
-        // === FARGATE PROFILES ===
         output += `#### 🚀 Fargate Profiles\n\n`;
         try {
           const fpCmd = new ListFargateProfilesCommand({ clusterName: cluster });
@@ -6798,7 +6606,6 @@ async function analyzeEKSAttackSurface(region: string, clusterName?: string): Pr
           output += `- Unable to enumerate Fargate profiles\n\n`;
         }
         
-        // === ATTACK SUMMARY ===
         output += `#### ⚔️ Attack Vectors Summary\n\n`;
         output += `| Vector | Risk | Technique |\n`;
         output += `|--------|------|----------|\n`;
@@ -6817,7 +6624,6 @@ async function analyzeEKSAttackSurface(region: string, clusterName?: string): Pr
       }
     }
     
-    // === REMEDIATION ===
     output += `## 🛡️ Remediation Recommendations\n\n`;
     output += `1. **Disable public endpoint** or restrict to specific CIDRs\n`;
     output += `2. **Enable all audit logs** (api, audit, authenticator, controllerManager, scheduler)\n`;
@@ -6845,21 +6651,18 @@ async function detectPrivescPatterns(principalArn?: string, includeRemediation: 
   const findings: { pattern: PrivescPattern; principal: string; matchedActions: string[] }[] = [];
   
   try {
-    // Get principals to analyze
     const principals: { arn: string; type: 'User' | 'Role'; name: string }[] = [];
     
     if (principalArn) {
       const type = principalArn.includes(':user/') ? 'User' : 'Role';
       principals.push({ arn: principalArn, type, name: principalArn.split('/').pop()! });
     } else {
-      // Get all users
       const usersCmd = new ListUsersCommand({});
       const users = await iamClient.send(usersCmd);
       for (const user of users.Users || []) {
         principals.push({ arn: user.Arn!, type: 'User', name: user.UserName! });
       }
       
-      // Get all roles (exclude AWS service roles)
       const rolesCmd = new ListRolesCommand({});
       const roles = await iamClient.send(rolesCmd);
       for (const role of roles.Roles || []) {
@@ -6873,7 +6676,6 @@ async function detectPrivescPatterns(principalArn?: string, includeRemediation: 
     output += `- **Users:** ${principals.filter(p => p.type === 'User').length}\n`;
     output += `- **Roles:** ${principals.filter(p => p.type === 'Role').length}\n\n`;
     
-    // Check each principal against patterns
     for (const principal of principals.slice(0, 30)) { // Limit for performance
       const permissions = await getPrincipalEffectivePermissions(principal.arn, principal.type);
       
@@ -6999,13 +6801,11 @@ async function analyzeEC2MetadataExposure(region: string): Promise<string> {
       for (const instance of reservation.Instances || []) {
         const instanceId = instance.InstanceId || 'unknown';
         
-        // Check IMDS version
         const httpTokens = instance.MetadataOptions?.HttpTokens;
         if (httpTokens !== 'required') {
           imdsV1Instances.push(instanceId);
         }
 
-        // Check for instance profile (role)
         if (instance.IamInstanceProfile) {
           instancesWithRoles.push(`${instanceId} → ${instance.IamInstanceProfile.Arn}`);
         }
@@ -7239,7 +7039,6 @@ async function detectDataExfiltrationPaths(region: string): Promise<string> {
 
     let externalConnections: string[] = [];
     for (const fn of functions.Functions || []) {
-      // Check if Lambda is in VPC (can reach external)
       if (!fn.VpcConfig?.VpcId) {
         externalConnections.push(`**${fn.FunctionName}**: Not in VPC (direct internet access)`);
       }
@@ -7276,9 +7075,7 @@ async function detectDataExfiltrationPaths(region: string): Promise<string> {
   return output;
 }
 
-// ============================================
 // EKS/KUBERNETES SECURITY FUNCTIONS
-// ============================================
 
 async function scanEKSServiceAccounts(region: string, clusterName: string): Promise<string> {
   const eksClient = new EKSClient({ region });
@@ -7294,7 +7091,6 @@ async function scanEKSServiceAccounts(region: string, clusterName: string): Prom
     const findings: any[] = [];
     let riskScore = 0;
 
-    // Check OIDC provider for IRSA
     if (!cluster.identity?.oidc?.issuer) {
       findings.push({
         id: 'TC-SA-005',
@@ -7309,7 +7105,6 @@ async function scanEKSServiceAccounts(region: string, clusterName: string): Prom
       riskScore += 35;
     }
 
-    // Check endpoint access
     if (cluster.resourcesVpcConfig?.endpointPublicAccess) {
       findings.push({
         id: 'TC-EKS-001',
@@ -7324,7 +7119,6 @@ async function scanEKSServiceAccounts(region: string, clusterName: string): Prom
       riskScore += cluster.resourcesVpcConfig.publicAccessCidrs?.includes('0.0.0.0/0') ? 40 : 15;
     }
 
-    // Check logging
     const loggingEnabled = cluster.logging?.clusterLogging?.some(l => l.enabled && l.types?.length);
     if (!loggingEnabled) {
       findings.push({
@@ -7340,7 +7134,6 @@ async function scanEKSServiceAccounts(region: string, clusterName: string): Prom
       riskScore += 25;
     }
 
-    // Check secrets encryption
     if (!cluster.encryptionConfig?.length) {
       findings.push({
         id: 'TC-SECRET-005',
@@ -7635,7 +7428,6 @@ kubectl --token=$TOKEN get pods -A
   }
 }
 
-// ========== MULTI-REGION SCANNING FUNCTIONS ==========
 
 interface RegionResult {
   region: string;
@@ -7860,7 +7652,6 @@ async function scanRegionForVPC(region: string): Promise<RegionResult> {
         findings.push(`[MEDIUM] ${vpcName} is the DEFAULT VPC (consider using custom VPC)`);
       }
       
-      // Check for flow logs
       // Note: Would need additional API call to fully check
       findings.push(`[INFO] ${vpcName}: ${vpc.CidrBlock}`);
     }
@@ -7987,7 +7778,6 @@ async function scanAllRegions(
     output += `## Scanning ${regions.length} regions for ${resourceType}...\n\n`;
     results = await parallelScan(regions, scanner, concurrency);
     
-    // Process results
     for (const result of results) {
       if (result.error) {
         errorRegions.push(`${result.region}: ${result.error}`);
@@ -8023,7 +7813,6 @@ async function scanAllRegions(
     }
   }
   
-  // Summary
   output += `---\n\n`;
   output += `## Summary\n\n`;
   output += `| Metric | Value |\n`;
@@ -8148,9 +7937,7 @@ async function listActiveRegions(scanMode?: string, regionsInput?: string): Prom
   return output;
 }
 
-// ============================================================================
 // AMI SECURITY ANALYSIS
-// ============================================================================
 
 /**
  * Analyze AMI security: public exposure, cross-account sharing, encryption, age
@@ -8165,14 +7952,12 @@ async function analyzeAMISecurity(region: string, includeAwsManaged: boolean = f
   try {
     const ec2Client = new EC2Client({ region });
     
-    // Get account ID
     const stsClient = new STSClient({ region });
     const identity = await stsClient.send(new GetCallerIdentityCommand({}));
     const accountId = identity.Account || '';
     
     output += `**Account:** ${accountId}\n\n`;
 
-    // Get all AMIs owned by this account
     const imagesCmd = new DescribeImagesCommand({
       Owners: ['self'],
     });
@@ -8187,7 +7972,6 @@ async function analyzeAMISecurity(region: string, includeAwsManaged: boolean = f
       return output;
     }
 
-    // Analyze each AMI
     output += `## AMI Analysis\n\n`;
     
     let publicCount = 0;
@@ -8202,7 +7986,6 @@ async function analyzeAMISecurity(region: string, includeAwsManaged: boolean = f
       const creationDate = image.CreationDate ? new Date(image.CreationDate) : null;
       const ageInDays = creationDate ? Math.floor((Date.now() - creationDate.getTime()) / (1000 * 60 * 60 * 24)) : 0;
       
-      // Check if AMI is public
       if (image.Public) {
         publicCount++;
         findings.push({
@@ -8212,7 +7995,6 @@ async function analyzeAMISecurity(region: string, includeAwsManaged: boolean = f
         });
       }
 
-      // Check launch permissions for cross-account sharing
       try {
         const attrCmd = new DescribeImageAttributeCommand({
           ImageId: amiId,
@@ -8247,7 +8029,6 @@ async function analyzeAMISecurity(region: string, includeAwsManaged: boolean = f
         // May not have permission to check attributes
       }
 
-      // Check encryption status of backing snapshots
       const blockDevices = image.BlockDeviceMappings || [];
       for (const device of blockDevices) {
         if (device.Ebs && device.Ebs.Encrypted === false) {
@@ -8261,7 +8042,6 @@ async function analyzeAMISecurity(region: string, includeAwsManaged: boolean = f
         }
       }
 
-      // Check age (>365 days is concerning)
       if (ageInDays > 365) {
         oldCount++;
         findings.push({
