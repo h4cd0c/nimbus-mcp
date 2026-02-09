@@ -5,33 +5,40 @@ All notable changes to **Nimbus** (AWS Security Assessment MCP Server) will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.5.4] - 2025-01-28
+## [1.5.4] - 2026-02-08
 
 ### Added - MCP Compliance & Quality Improvements
 
 #### MCP Tool Annotations (OWASP MCP-05)
 - **45/45 Tools Annotated** - Complete annotation coverage for all tools
-  - `readOnly: true` - All tools are non-destructive (read-only operations)
-  - `destructive: false` - No tools modify AWS infrastructure
-  - `idempotent: true/false` - Utility tools (help, cache) are idempotent
-  - `openWorld: true/false` - Tools requiring AWS API marked as openWorld
+  - `readOnlyHint: true` - All tools are non-destructive (read-only operations)
+  - `destructiveHint: false` - No tools modify AWS infrastructure
+  - `idempotentHint: true/false` - Utility tools (help, cache) are idempotent
+  - `openWorldHint: true/false` - Tools requiring AWS API marked as openWorld
+  - AWS SDK requires "Hint" suffix for annotation properties (documented)
 
 #### Comprehensive Test Suite
-- **325+ Tests** - Complete test coverage across 3 test files
-  - `tests/utils.test.ts` (145 tests) - Utility functions, validation, caching, rate limiting
-  - `tests/tools.test.ts` (85 tests) - Tool structure, naming conventions, schemas
-  - `tests/security.test.ts` (95 tests) - OWASP MCP compliance, security best practices
+- **95 Tests** - Complete test coverage across 3 test files
+  - `tests/utils.test.ts` (28 tests) - Region validation, input sanitization, caching, rate limiting
+  - `tests/tools.test.ts` (27 tests) - Tool structure, naming conventions, schemas, categories
+  - `tests/security.test.ts` (40 tests) - OWASP MCP Top 10 compliance, security best practices
   - Jest with ts-jest, ES modules support
   - Test documentation in `tests/README.md`
 
 #### Quality Improvements
 - **Tool Count Correction** - Updated from 42 to 45 tools (accurate count)
-- **Test Infrastructure** - Professional test suite with comprehensive coverage
-- **Documentation** - Detailed test README with examples and guidelines
+- **Test Infrastructure** - Professional test suite with 95 passing tests
+- **Documentation** - Enhanced README with version badges and test status
+- **CI/CD** - Added GitHub Actions for automated testing on Node.js 18.x and 20.x
 
 ### Changed
 - Version bumped from 1.5.3 to 1.5.4
+- README badges updated (version 1.5.0 → 1.5.4, tools 41 → 45, added test badge)
 - Package description updated to reflect accurate tool count (45 tools)
+
+### Security
+- Git history sanitized - removed hardcoded AWS account IDs from all commits
+- All test data uses placeholder values only
 
 ## [1.5.2] - 2026-01-24
 
