@@ -131,6 +131,15 @@
 
 ### 1️⃣ Installation
 
+**Option 1: Install from npm (Recommended)**
+
+```bash
+# Install globally from npm
+npm install -g nimbus-mcp
+```
+
+**Option 2: Build from source**
+
 ```bash
 # Clone the repository
 git clone https://github.com/h4cd0c/nimbus-mcp.git
