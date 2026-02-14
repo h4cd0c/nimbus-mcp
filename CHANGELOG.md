@@ -5,6 +5,64 @@ All notable changes to **Nimbus** (AWS Security Assessment MCP Server) will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-02-14
+
+### Added 🆕 **MAJOR SECURITY EXPANSION**
+- **5 Critical Attack Detection Tools** - Based on 2024-2026 cloud penetration testing research
+
+#### New Tools (45 → 50 tools total)
+
+1. **aws_scan_lambda_cold_start_risks** - Lambda Cold Start Injection & Layer Poisoning
+   - Detects malicious Lambda layers from external/untrusted sources
+   - Identifies function URL exposure without authentication
+   - Scans environment variables for hardcoded secrets/injection patterns
+   - Flags excessive execution times (potential crypto mining)
+   - Analyzes Lambda@Edge functions (higher risk attack surface)
+   - Monitors event source mapping configurations
+   - **MITRE:** T1525 (Implant Container Image), T1190 (Exploit Public Application)
+
+2. **aws_scan_api_gateway_auth** - API Gateway Authentication Bypass
+   - Detects JWT algorithm confusion vulnerabilities (RS256 → HS256 downgrade)
+   - Identifies endpoints with missing authorization
+   - Flags CORS misconfigurations allowing credential theft
+   - Checks API key exposure and usage plan weaknesses
+   - Validates request validation and throttling settings
+   - Analyzes authorizer cache TTL risks
+   - Detects disabled CloudWatch logging (no audit trail)
+   - **MITRE:** T1550.001 (Application Access Token), T1539 (Steal Session Cookie)
+
+3. **aws_scan_eks_irsa_risks** - EKS IRSA Token Theft & Privilege Escalation
+   - Analyzes IAM Roles for Service Accounts (IRSA) configurations
+   - Detects overly permissive IAM roles bound to service accounts
+   - Identifies weak trust policies (no namespace/service account restrictions)
+   - Checks if pods use node IAM role instead of IRSA (privilege escalation risk)
+   - Validates OIDC provider configuration (audience, issuer validation)
+   - Monitors IMDSv2 enforcement on node groups
+   - Provides kubectl commands for RBAC enumeration
+   - **MITRE:** T1552.005 (Cloud Instance Metadata API), T1078.004 (Cloud Accounts)
+
+4. **aws_scan_container_registry_poisoning** - ECR Supply Chain Attacks
+   - Detects public ECR registries (anyone can pull images)
+   - Identifies repository policies allowing external account access
+   - Checks if image scanning on push is disabled
+   - Flags mutable image tags (tag rewriting attacks)
+   - Analyzes recent images for CRITICAL/HIGH vulnerabilities
+   - Validates encryption at rest configurations
+   - Provides remediation for image signing and verification
+   - **MITRE:** T1525 (Implant Internal Image), T1195.003 (Supply Chain Compromise)
+
+### Technical Implementation
+- All 4 new tools use **array-based string building** for optimal performance
+- Comprehensive MITRE ATT&CK technique mappings
+- Risk severity scoring (CRITICAL/HIGH/MEDIUM/LOW)
+- Detailed exploitation examples with bash commands
+- Actionable remediation guidance for each finding
+- Support for both markdown and JSON output formats
+
+### Fixed 🔧
+- TypeScript compilation errors in existing IRSA scan code
+- Improved null safety checks in argument validation
+
 ## [1.5.8] - 2026-02-14
 
 ### Performance ⚡ **CRITICAL FIX**

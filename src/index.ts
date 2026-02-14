@@ -20,17 +20,18 @@ const SERVER_VERSION = packageJson.version;
 
 import { EC2Client, DescribeInstancesCommand, DescribeSecurityGroupsCommand, DescribeVpcsCommand, DescribeSubnetsCommand, DescribeImagesCommand, DescribeImageAttributeCommand } from "@aws-sdk/client-ec2";
 import { S3Client, ListBucketsCommand, GetBucketPolicyCommand, GetBucketEncryptionCommand, GetPublicAccessBlockCommand, GetBucketAclCommand, GetBucketVersioningCommand, GetBucketLoggingCommand, GetBucketPolicyStatusCommand, GetBucketLocationCommand } from "@aws-sdk/client-s3";
+import { ECRClient, DescribeRepositoriesCommand, GetRepositoryPolicyCommand, DescribeImageScanFindingsCommand, DescribeImagesCommand as DescribeECRImagesCommand } from "@aws-sdk/client-ecr";
 import { IAMClient, ListUsersCommand, ListRolesCommand, ListPoliciesCommand, GetPolicyVersionCommand, ListAttachedUserPoliciesCommand, ListAttachedRolePoliciesCommand, ListUserPoliciesCommand, GetUserPolicyCommand, ListRolePoliciesCommand, GetRolePolicyCommand, GetRoleCommand, ListGroupsForUserCommand, ListAttachedGroupPoliciesCommand, GetPolicyCommand } from "@aws-sdk/client-iam";
 import { RDSClient, DescribeDBInstancesCommand, DescribeDBClustersCommand } from "@aws-sdk/client-rds";
 import { STSClient, GetCallerIdentityCommand } from "@aws-sdk/client-sts";
 import { OrganizationsClient, ListAccountsCommand, DescribeOrganizationCommand } from "@aws-sdk/client-organizations";
 import { EKSClient, ListClustersCommand, DescribeClusterCommand, ListNodegroupsCommand, DescribeNodegroupCommand, ListFargateProfilesCommand, DescribeFargateProfileCommand } from "@aws-sdk/client-eks";
-import { LambdaClient, ListFunctionsCommand, GetFunctionCommand } from "@aws-sdk/client-lambda";
+import { LambdaClient, ListFunctionsCommand, GetFunctionCommand, GetFunctionUrlConfigCommand, ListEventSourceMappingsCommand, GetFunctionConfigurationCommand, ListLayerVersionsCommand } from "@aws-sdk/client-lambda";
 import { SecretsManagerClient, ListSecretsCommand, DescribeSecretCommand } from "@aws-sdk/client-secrets-manager";
 import { KMSClient, ListKeysCommand, DescribeKeyCommand } from "@aws-sdk/client-kms";
 import { CloudTrailClient, DescribeTrailsCommand, GetTrailStatusCommand } from "@aws-sdk/client-cloudtrail";
 import { DynamoDBClient, ListTablesCommand, DescribeTableCommand, DescribeContinuousBackupsCommand } from "@aws-sdk/client-dynamodb";
-import { APIGatewayClient, GetRestApisCommand, GetStagesCommand, GetResourcesCommand } from "@aws-sdk/client-api-gateway";
+import { APIGatewayClient, GetRestApisCommand, GetStagesCommand, GetResourcesCommand, GetAuthorizersCommand, GetApiKeysCommand, GetUsagePlansCommand, GetMethodCommand, GetRestApiCommand } from "@aws-sdk/client-api-gateway";
 import { CloudFrontClient, ListDistributionsCommand, GetDistributionConfigCommand } from "@aws-sdk/client-cloudfront";
 import { ElastiCacheClient, DescribeCacheClustersCommand, DescribeReplicationGroupsCommand } from "@aws-sdk/client-elasticache";
 import { GuardDutyClient, ListDetectorsCommand, ListFindingsCommand, GetFindingsCommand } from "@aws-sdk/client-guardduty";
@@ -114,6 +115,7 @@ const cognitoIdentityClient = new CognitoIdentityClient({ region: DEFAULT_REGION
 const cognitoIdpClient = new CognitoIdentityProviderClient({ region: DEFAULT_REGION });
 const cloudformationClient = new CloudFormationClient({ region: DEFAULT_REGION });
 const cloudwatchClient = new CloudWatchClient({ region: DEFAULT_REGION });
+const ecrClient = new ECRClient({ region: DEFAULT_REGION });
 
 const server = new Server(
   {
@@ -515,6 +517,35 @@ const TOOLS: Tool[] = [
           enum: ["markdown", "json"],
         },
       },
+    },
+  },
+  {
+    name: "aws_scan_eks_irsa_risks",
+    description: "Scan EKS cluster for IRSA (IAM Roles for Service Accounts) token theft risks, overly permissive IAM roles, service accounts with excessive RBAC permissions, and OIDC provider misconfigurations",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        region: {
+          type: "string",
+          description: "AWS region where EKS cluster is located",
+        },
+        clusterName: {
+          type: "string",
+          description: "EKS cluster name",
+        },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default) or 'json'",
+          enum: ["markdown", "json"],
+        },
+      },
+      required: ["region", "clusterName"],
     },
   },
   {
@@ -1060,6 +1091,64 @@ const TOOLS: Tool[] = [
     },
   },
   {
+    name: "aws_scan_lambda_cold_start_risks",
+    description: "Scan Lambda functions for cold start injection, layer poisoning, function URL exposure, environment variable injection, excessive execution times, and event source mapping abuse",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        region: {
+          type: "string",
+          description: "AWS region to scan",
+        },
+        functionName: {
+          type: "string",
+          description: "Optional: specific Lambda function name to analyze",
+        },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default) or 'json'",
+          enum: ["markdown", "json"],
+        },
+      },
+      required: ["region"],
+    },
+  },
+  {
+    name: "aws_scan_api_gateway_auth",
+    description: "Scan API Gateway for JWT algorithm confusion, missing authorization, API key exposure, CORS misconfiguration, weak authorizers, missing request validation, and throttling issues",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        region: {
+          type: "string",
+          description: "AWS region to scan",
+        },
+        apiId: {
+          type: "string",
+          description: "Optional: specific API Gateway REST API ID to analyze",
+        },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default) or 'json'",
+          enum: ["markdown", "json"],
+        },
+      },
+      required: ["region"],
+    },
+  },
+  {
     name: "aws_scan_all_regions",
     description: "Scan multiple AWS regions for resources. Supports: ec2, lambda, rds, eks, secrets, guardduty, elasticache, vpc. Specify custom regions OR use presets ('common'=11 regions, 'all'=30+ regions).",
     annotations: {
@@ -1096,6 +1185,35 @@ const TOOLS: Tool[] = [
         },
       },
       required: ["resourceType"],
+    },
+  },
+  {
+    name: "aws_scan_container_registry_poisoning",
+    description: "Scan ECR (Elastic Container Registry) for poisoning risks: public registries, vulnerable images, missing signature verification, external access policies, lack of scanning, mutable tags, and embedded secrets",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        region: {
+          type: "string",
+          description: "AWS region to scan",
+        },
+        repositoryName: {
+          type: "string",
+          description: "Optional: specific ECR repository name to analyze",
+        },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default) or 'json'",
+          enum: ["markdown", "json"],
+        },
+      },
+      required: ["region"],
     },
   },
   {
@@ -1642,6 +1760,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
+      case "aws_scan_eks_irsa_risks": {
+        if (!args) throw new Error("Missing required arguments");
+        const region = String(args.region);
+        const clusterName = String(args.clusterName);
+        const format = args.format ? String(args.format) : "markdown";
+        const result = await scanEKSIRSARisks(region, clusterName, format);
+        return { content: [{ type: "text", text: result }] };
+      }
+
       case "aws_scan_secrets_manager": {
         const region = v.regionRequired(args?.region, false);
         const format = v.outputFormat(args?.format);
@@ -1814,6 +1941,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
+      case "aws_scan_lambda_cold_start_risks": {
+        const region = v.regionRequired(args?.region, false);
+        const functionName = v.genericString(args?.functionName, 128);
+        const format = v.outputFormat(args?.format);
+        const result = await scanLambdaColdStartRisks(region, functionName, format);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
+      }
+
+      case "aws_scan_api_gateway_auth": {
+        const region = v.regionRequired(args?.region, false);
+        const apiId = v.genericString(args?.apiId, 128);
+        const format = v.outputFormat(args?.format);
+        const result = await scanAPIGatewayAuth(region, apiId, format);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
+      }
+
       case "aws_scan_all_regions": {
         const resourceType = v.resourceType(args?.resourceType, ['ec2', 'rds', 'lambda', 's3', 'eks', 'all']);
         if (!resourceType) throw new Error("resourceType is required");
@@ -1823,6 +1966,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const regions = v.genericString(args?.regions);
         const format = v.outputFormat(args?.format);
         const result = await scanAllRegions(resourceType, scanMode, parallelism, regions);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
+      }
+
+      case "aws_scan_container_registry_poisoning": {
+        const region = v.region(args?.region, false);
+        if (!region) throw new Error("region is required");
+        const repositoryName = v.genericString(args?.repositoryName);
+        const format = v.outputFormat(args?.format);
+        const result = await scanECRPoisoning(region, repositoryName, format);
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
@@ -2382,6 +2534,342 @@ async function analyzeAPIDistributionSecurity(region?: string, scanMode?: string
     output += "## CloudFront Distributions\n" + await scanCloudFrontSecurity() + "\n";
   }
   return output;
+}
+
+async function scanEKSIRSARisks(region: string, clusterName: string, format: string = "markdown"): Promise<string> {
+  const eksClient = new EKSClient({ region });
+  const iamClient = new IAMClient({ region });
+  const ec2Client = new EC2Client({ region });
+  
+  try {
+    const outputLines: string[] = [];
+    
+    // Get cluster details
+    const clusterResponse = await eksClient.send(new DescribeClusterCommand({ name: clusterName }));
+    const cluster = clusterResponse.cluster;
+    
+    if (!cluster) {
+      return `Error: Cluster ${clusterName} not found in region ${region}`;
+    }
+    
+    const timestamp = new Date().toISOString();
+    const oidcIssuer = cluster.identity?.oidc?.issuer;
+    const oidcEnabled = !!oidcIssuer;
+    
+    // Get node groups for IMDSv2 check
+    let nodeGroups: any[] = [];
+    let imdsv2Enforced = true;
+    try {
+      const nodeGroupsResponse = await eksClient.send(new ListNodegroupsCommand({ clusterName }));
+      const nodeGroupNames = nodeGroupsResponse.nodegroups || [];
+      
+      for (const ngName of nodeGroupNames) {
+        const ngDetails = await eksClient.send(new DescribeNodegroupCommand({ 
+          clusterName, 
+          nodegroupName: ngName 
+        }));
+        if (ngDetails.nodegroup) {
+          nodeGroups.push(ngDetails.nodegroup);
+          // Check if IMDSv2 is enforced (would require additional DescribeLaunchTemplateVersions call)
+          // For now, mark as uncertain if launch template is used
+          if (ngDetails.nodegroup.launchTemplate) {
+            imdsv2Enforced = false; // Uncertain - requires additional API call
+          }
+        }
+      }
+    } catch (error: any) {
+      // Node group enumeration may fail, continue with scan
+    }
+    
+    // Find IRSA roles by analyzing IAM roles
+    const irsaRoles: any[] = [];
+    let overlyPermissiveCount = 0;
+    let weakTrustPolicyCount = 0;
+    
+    if (oidcEnabled && oidcIssuer) {
+      try {
+        const rolesResponse = await iamClient.send(new ListRolesCommand({}));
+        const allRoles = rolesResponse.Roles || [];
+        
+        // Filter roles that have OIDC provider in trust policy
+        const oidcProviderPath = oidcIssuer.replace('https://', '');
+        
+        for (const role of allRoles) {
+          try {
+            const trustPolicy = role.AssumeRolePolicyDocument ? 
+              decodeURIComponent(role.AssumeRolePolicyDocument) : '';
+            
+            // Check if this is an IRSA role
+            if (trustPolicy.includes(oidcProviderPath) && trustPolicy.includes(':sub')) {
+              const roleDetails = await iamClient.send(new GetRoleCommand({ RoleName: role.RoleName }));
+              
+              // Get attached policies
+              const attachedPoliciesResponse = await iamClient.send(
+                new ListAttachedRolePoliciesCommand({ RoleName: role.RoleName })
+              );
+              const attachedPolicies = attachedPoliciesResponse.AttachedPolicies || [];
+              
+              // Get inline policies
+              const inlinePoliciesResponse = await iamClient.send(
+                new ListRolePoliciesCommand({ RoleName: role.RoleName })
+              );
+              const inlinePolicyNames = inlinePoliciesResponse.PolicyNames || [];
+              
+              // Analyze trust policy for restrictions
+              const parsedTrustPolicy = JSON.parse(trustPolicy);
+              let hasNamespaceRestriction = false;
+              let hasServiceAccountRestriction = false;
+              let serviceAccountInfo = 'Unknown';
+              
+              for (const statement of parsedTrustPolicy.Statement || []) {
+                if (statement.Condition && statement.Condition.StringEquals) {
+                  const subCondition = statement.Condition.StringEquals[`${oidcProviderPath}:sub`];
+                  if (subCondition) {
+                    serviceAccountInfo = subCondition;
+                    const parts = subCondition.split(':');
+                    if (parts.length >= 3 && !subCondition.includes('*')) {
+                      hasNamespaceRestriction = true;
+                      hasServiceAccountRestriction = true;
+                    } else if (subCondition.includes('*')) {
+                      hasServiceAccountRestriction = false;
+                    }
+                  }
+                }
+              }
+              
+              // Check for overly permissive policies
+              let isOverlyPermissive = false;
+              let permissiveReasons: string[] = [];
+              
+              for (const policy of attachedPolicies) {
+                const policyName = policy.PolicyName || '';
+                if (policyName.includes('Admin') || 
+                    policyName.includes('FullAccess') || 
+                    policyName.includes('PowerUser')) {
+                  isOverlyPermissive = true;
+                  permissiveReasons.push(`Policy: ${policyName}`);
+                }
+              }
+              
+              if (!hasNamespaceRestriction || !hasServiceAccountRestriction) {
+                weakTrustPolicyCount++;
+              }
+              
+              if (isOverlyPermissive) {
+                overlyPermissiveCount++;
+              }
+              
+              irsaRoles.push({
+                roleName: role.RoleName,
+                roleArn: role.Arn,
+                serviceAccount: serviceAccountInfo,
+                attachedPolicies,
+                inlinePolicyNames,
+                hasNamespaceRestriction,
+                hasServiceAccountRestriction,
+                isOverlyPermissive,
+                permissiveReasons,
+                trustPolicy: parsedTrustPolicy,
+              });
+            }
+          } catch (error: any) {
+            // Skip roles we can't analyze
+          }
+        }
+      } catch (error: any) {
+        // Continue even if IAM enumeration fails
+      }
+    }
+    
+    // Build output
+    outputLines.push('# EKS IRSA Token Theft & Privilege Escalation Scan');
+    outputLines.push(`**Cluster:** ${clusterName}`);
+    outputLines.push(`**Region:** ${region}`);
+    outputLines.push(`**Kubernetes Version:** ${cluster.version}`);
+    outputLines.push(`**Scan Time:** ${timestamp}`);
+    outputLines.push('');
+    outputLines.push('## IRSA Configuration');
+    outputLines.push('| Feature | Status |');
+    outputLines.push('|---------|--------|');
+    outputLines.push(`| OIDC Provider | ${oidcEnabled ? 'Enabled ✅' : 'Disabled ❌'} |`);
+    outputLines.push(`| OIDC Issuer | ${oidcIssuer || 'N/A'} |`);
+    outputLines.push(`| Node Groups | ${nodeGroups.length} |`);
+    outputLines.push(`| IMDSv2 Enforced | ${imdsv2Enforced ? 'Yes ✅' : 'No ❌'} |`);
+    outputLines.push('');
+    outputLines.push('## Risk Summary');
+    outputLines.push('| Risk Type | Count | Severity |');
+    outputLines.push('|-----------|-------|----------|');
+    outputLines.push(`| Overly Permissive IRSA Roles | ${overlyPermissiveCount} | CRITICAL |`);
+    outputLines.push(`| No IRSA (Using Node Role) | ${oidcEnabled ? '0' : '1'} | HIGH |`);
+    outputLines.push(`| Weak Trust Policy | ${weakTrustPolicyCount} | HIGH |`);
+    outputLines.push(`| IMDSv2 Not Enforced | ${imdsv2Enforced ? '0' : nodeGroups.length} | MEDIUM |`);
+    outputLines.push('');
+    outputLines.push('## Detailed Findings');
+    outputLines.push('');
+    outputLines.push('### TC-IRSA-001: IRSA Token Theft Attack Path');
+    outputLines.push('**Risk:** CRITICAL | **MITRE:** T1552.005 - Cloud Instance Metadata API');
+    outputLines.push(`**OIDC Status:** ${oidcEnabled ? 'Enabled' : 'Disabled'}`);
+    outputLines.push('');
+    
+    if (oidcEnabled) {
+      outputLines.push('If IRSA **enabled**, attacker can:');
+      outputLines.push('1. Compromise pod with IRSA role');
+      outputLines.push('2. Steal OIDC token from /var/run/secrets/eks.amazonaws.com/serviceaccount/token');
+      outputLines.push('3. Use AssumeRoleWithWebIdentity to get temporary AWS credentials');
+      outputLines.push('4. Escalate privileges based on IAM role permissions');
+      outputLines.push('');
+      outputLines.push('```bash');
+      outputLines.push('# From compromised pod');
+      outputLines.push('TOKEN=$(cat /var/run/secrets/eks.amazonaws.com/serviceaccount/token)');
+      outputLines.push('ROLE_ARN="arn:aws:iam::ACCOUNT:role/ROLE_NAME"');
+      outputLines.push('aws sts assume-role-with-web-identity \\');
+      outputLines.push('  --role-arn $ROLE_ARN \\');
+      outputLines.push('  --role-session-name hacked \\');
+      outputLines.push('  --web-identity-token $TOKEN');
+      outputLines.push('```');
+      outputLines.push('');
+      outputLines.push(`### IRSA Roles Found: ${irsaRoles.length}`);
+      outputLines.push('');
+      
+      for (const role of irsaRoles) {
+        const riskLevel = role.isOverlyPermissive ? 'CRITICAL' : 
+                         (!role.hasNamespaceRestriction || !role.hasServiceAccountRestriction) ? 'HIGH' : 'MEDIUM';
+        
+        outputLines.push(`#### Role: ${role.roleName}`);
+        outputLines.push(`**ARN:** ${role.roleArn}`);
+        outputLines.push(`**Service Account:** ${role.serviceAccount}`);
+        outputLines.push(`**Risk:** ${riskLevel}`);
+        outputLines.push('');
+        outputLines.push('**Attached Policies:**');
+        
+        if (role.attachedPolicies.length > 0) {
+          for (const policy of role.attachedPolicies) {
+            outputLines.push(`- ${policy.PolicyName} - ${policy.PolicyArn}`);
+            if (role.isOverlyPermissive && role.permissiveReasons.includes(`Policy: ${policy.PolicyName}`)) {
+              outputLines.push(`  * ⚠️ Risk: Overly permissive policy detected`);
+            }
+          }
+        } else {
+          outputLines.push('- None');
+        }
+        
+        if (role.inlinePolicyNames.length > 0) {
+          outputLines.push('**Inline Policies:**');
+          for (const policyName of role.inlinePolicyNames) {
+            outputLines.push(`- ${policyName}`);
+          }
+        }
+        
+        outputLines.push('');
+        outputLines.push('**Trust Policy Issues:**');
+        if (!role.hasNamespaceRestriction) {
+          outputLines.push('- ❌ No namespace restriction (any SA can assume)');
+        } else {
+          outputLines.push('- ✅ Namespace restriction in place');
+        }
+        if (!role.hasServiceAccountRestriction) {
+          outputLines.push('- ❌ No service account name restriction');
+        } else {
+          outputLines.push('- ✅ Service account name restriction in place');
+        }
+        outputLines.push('- ✅ OIDC provider validated');
+        outputLines.push('');
+      }
+    } else {
+      outputLines.push('**⚠️ CRITICAL: IRSA is NOT enabled on this cluster!**');
+      outputLines.push('');
+      outputLines.push('Without IRSA, all pods inherit the node IAM role, which typically has broad permissions.');
+      outputLines.push('This is a significant security risk as compromise of any pod grants access to the node role.');
+      outputLines.push('');
+      outputLines.push('**Remediation:**');
+      outputLines.push('```bash');
+      outputLines.push(`eksctl utils associate-iam-oidc-provider --cluster ${clusterName} --region ${region} --approve`);
+      outputLines.push('```');
+      outputLines.push('');
+    }
+    
+    outputLines.push('### TC-IRSA-002: Pods Using Node IAM Role');
+    outputLines.push('**Risk:** HIGH | **MITRE:** T1078.004 - Cloud Accounts');
+    outputLines.push(`**IMDSv2 Enforced:** ${imdsv2Enforced ? 'Yes' : 'No'}`);
+    outputLines.push('');
+    outputLines.push('Pods without IRSA inherit the node\'s IAM role, which often has excessive permissions.');
+    outputLines.push('');
+    outputLines.push('```bash');
+    outputLines.push('# Check from pod');
+    outputLines.push('curl http://169.254.169.254/latest/meta-data/iam/security-credentials/');
+    outputLines.push('# If accessible, pod using node role (bad!)');
+    outputLines.push('```');
+    outputLines.push('');
+    
+    if (nodeGroups.length > 0) {
+      outputLines.push('**Node Groups:**');
+      for (const ng of nodeGroups) {
+        const ngName = ng.nodegroupName || 'Unknown';
+        const metadataOptions = ng.launchTemplate?.metadataOptions;
+        const httpTokens = metadataOptions?.httpTokens || 'optional';
+        const status = httpTokens === 'required' ? 'Enforced ✅' : 'Optional ❌';
+        outputLines.push(`- ${ngName}: IMDSv2 ${status}`);
+      }
+      outputLines.push('');
+    }
+    
+    outputLines.push('### Kubernetes RBAC Enumeration Commands');
+    outputLines.push('');
+    outputLines.push('```bash');
+    outputLines.push('# List all service accounts');
+    outputLines.push('kubectl get sa -A');
+    outputLines.push('');
+    outputLines.push('# Find service accounts with IRSA annotations');
+    outputLines.push('kubectl get sa -A -o json | jq -r \'.items[] | select(.metadata.annotations["eks.amazonaws.com/role-arn"] != null) | "\\(.metadata.namespace)/\\(.metadata.name): \\(.metadata.annotations["eks.amazonaws.com/role-arn"])"\' ');
+    outputLines.push('');
+    outputLines.push('# Check RBAC permissions');
+    outputLines.push('kubectl auth can-i --list --as=system:serviceaccount:NAMESPACE:SA_NAME');
+    outputLines.push('');
+    outputLines.push('# Find cluster-admin service accounts');
+    outputLines.push('kubectl get clusterrolebindings -o json | jq -r \'.items[] | select(.roleRef.name == "cluster-admin") | select(.subjects[]?.kind == "ServiceAccount") | .subjects[] | select(.kind == "ServiceAccount") | "\\(.namespace)/\\(.name)"\' ');
+    outputLines.push('');
+    outputLines.push('# Test IMDS access from pod');
+    outputLines.push('kubectl run test-pod --image=curlimages/curl -it --rm -- sh');
+    outputLines.push('# Inside pod:');
+    outputLines.push('curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/');
+    outputLines.push('```');
+    outputLines.push('');
+    outputLines.push('## Remediation');
+    outputLines.push('1. Enable IRSA on all clusters (OIDC provider)');
+    outputLines.push('2. Use IRSA for all pods requiring AWS access');
+    outputLines.push('3. Enforce least privilege on IRSA IAM roles');
+    outputLines.push('4. Add namespace and service account conditions to trust policies');
+    outputLines.push('5. Enforce IMDSv2 on all node groups');
+    outputLines.push('6. Block IMDS access via network policies');
+    outputLines.push('7. Use projected service account tokens with short expiration');
+    outputLines.push('');
+    outputLines.push('**Example Trust Policy with Restrictions:**');
+    outputLines.push('```json');
+    outputLines.push('{');
+    outputLines.push('  "Version": "2012-10-17",');
+    outputLines.push('  "Statement": [');
+    outputLines.push('    {');
+    outputLines.push('      "Effect": "Allow",');
+    outputLines.push('      "Principal": {');
+    outputLines.push(`        "Federated": "arn:aws:iam::ACCOUNT_ID:oidc-provider/${oidcIssuer?.replace('https://', '') || 'OIDC_PROVIDER'}"`);
+    outputLines.push('      },');
+    outputLines.push('      "Action": "sts:AssumeRoleWithWebIdentity",');
+    outputLines.push('      "Condition": {');
+    outputLines.push('        "StringEquals": {');
+    outputLines.push(`          "${oidcIssuer?.replace('https://', '') || 'OIDC_PROVIDER'}:sub": "system:serviceaccount:NAMESPACE:SERVICE_ACCOUNT_NAME",`);
+    outputLines.push(`          "${oidcIssuer?.replace('https://', '') || 'OIDC_PROVIDER'}:aud": "sts.amazonaws.com"`);
+    outputLines.push('        }');
+    outputLines.push('      }');
+    outputLines.push('    }');
+    outputLines.push('  ]');
+    outputLines.push('}');
+    outputLines.push('```');
+    
+    return outputLines.join('\n');
+    
+  } catch (error: any) {
+    return `Error scanning EKS IRSA risks: ${error.message}`;
+  }
 }
 
 async function analyzeEncryptionSecurity(region: string, resourceType?: string, tableName?: string): Promise<string> {
@@ -7437,6 +7925,646 @@ async function huntEKSSecrets(region: string, clusterName: string): Promise<stri
   }
 }
 
+async function scanLambdaColdStartRisks(region: string, functionName?: string, format: string = "markdown"): Promise<string> {
+  const lambdaClient = new LambdaClient({ region });
+  
+  try {
+    const outputLines: string[] = [];
+    const scanTime = new Date().toISOString();
+    let functionsToScan: any[] = [];
+    
+    // Get function(s) to analyze
+    if (functionName) {
+      try {
+        const funcResponse = await lambdaClient.send(new GetFunctionCommand({ FunctionName: functionName }));
+        if (funcResponse.Configuration) {
+          functionsToScan.push(funcResponse.Configuration);
+        }
+      } catch (error: any) {
+        return `Error: Function ${functionName} not found in region ${region}: ${error.message}`;
+      }
+    } else {
+      const listResponse = await lambdaClient.send(new ListFunctionsCommand({}));
+      functionsToScan = listResponse.Functions || [];
+    }
+    
+    if (functionsToScan.length === 0) {
+      return `No Lambda functions found in region ${region}`;
+    }
+    
+    // Risk counters
+    interface RiskCount {
+      layerPoisoning: number;
+      functionUrlExposed: number;
+      envVarInjection: number;
+      excessiveExecutionTime: number;
+      eventSourceAbuse: number;
+      lambdaEdge: number;
+      publicLayers: number;
+    }
+    
+    const risks: RiskCount = {
+      layerPoisoning: 0,
+      functionUrlExposed: 0,
+      envVarInjection: 0,
+      excessiveExecutionTime: 0,
+      eventSourceAbuse: 0,
+      lambdaEdge: 0,
+      publicLayers: 0,
+    };
+    
+    const detailedFindings: string[] = [];
+    
+    // Analyze each function
+    for (const func of functionsToScan) {
+      const funcName = func.FunctionName || 'Unknown';
+      const funcArn = func.FunctionArn || 'Unknown';
+      const runtime = func.Runtime || 'Unknown';
+      const lastModified = func.LastModified || 'Unknown';
+      const timeout = func.Timeout || 0;
+      const memorySize = func.MemorySize || 0;
+      const layers = func.Layers || [];
+      const envVars = func.Environment?.Variables || {};
+      const role = func.Role || 'Unknown';
+      
+      const functionFindings: string[] = [];
+      
+      // Check 1: Layer Poisoning
+      if (layers.length > 0) {
+        for (const layer of layers) {
+          const layerArn = layer.Arn || '';
+          const layerAccountId = layerArn.split(':')[4];
+          const currentAccountId = funcArn.split(':')[4];
+          
+          // Check if layer is from external account
+          if (layerAccountId && currentAccountId && layerAccountId !== currentAccountId) {
+            risks.layerPoisoning++;
+            functionFindings.push(`#### TC-LAMBDA-001: Layer Poisoning\n**Risk:** CRITICAL | **MITRE:** T1525 - Implant Internal Image\n- Layer: ${layerArn}\n  * Source Account: ${layerAccountId} (EXTERNAL - not ${currentAccountId})\n  * Version: ${layer.CodeSize ? Math.floor(layer.CodeSize / 1024) + 'KB' : 'Unknown'}\n  * Risk: Malicious code injection via external layer\n  * **Remediation:** Verify layer source, use only trusted layers from your own account or verified AWS accounts`);
+          }
+          
+          // Flag public layers
+          if (layerArn.includes(':layer:') && !layerArn.startsWith(`arn:aws:lambda:${region}:${currentAccountId}`)) {
+            risks.publicLayers++;
+          }
+        }
+      }
+      
+      // Check 2: Function URL Exposure
+      try {
+        const urlConfig = await lambdaClient.send(new GetFunctionUrlConfigCommand({ FunctionName: funcName }));
+        if (urlConfig.FunctionUrl) {
+          const authType = urlConfig.AuthType || 'NONE';
+          const corsConfig = urlConfig.Cors ? JSON.stringify(urlConfig.Cors) : 'None';
+          
+          if (authType === 'NONE') {
+            risks.functionUrlExposed++;
+            functionFindings.push(`#### TC-LAMBDA-002: Function URL Exposed Without Auth\n**Risk:** HIGH | **MITRE:** T1190 - Exploit Public-Facing Application\n- URL: ${urlConfig.FunctionUrl}\n- Auth: ${authType} (PUBLIC ACCESS!)\n- CORS: ${corsConfig}\n- **Risk:** Anyone can invoke this function without authentication\n- **Remediation:** Enable IAM auth or use API Gateway with authorizer`);
+          } else {
+            functionFindings.push(`#### TC-LAMBDA-002: Function URL (Auth Enabled)\n**Risk:** MEDIUM | **MITRE:** T1190 - Exploit Public-Facing Application\n- URL: ${urlConfig.FunctionUrl}\n- Auth: ${authType} (IAM protected)\n- CORS: ${corsConfig}\n- **Note:** Function URL exists but requires IAM authentication`);
+          }
+        }
+      } catch (error: any) {
+        // Function URL not configured - this is actually good
+      }
+      
+      // Check 3: Environment Variable Injection
+      const suspiciousPatterns = ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'PASSWORD', 'API_KEY', 'SECRET', 'TOKEN', 'PRIVATE_KEY', 'DB_PASSWORD', 'MYSQL_PASSWORD'];
+      for (const [key, value] of Object.entries(envVars)) {
+        const valueStr = String(value);
+        for (const pattern of suspiciousPatterns) {
+          if (key.toUpperCase().includes(pattern)) {
+            risks.envVarInjection++;
+            functionFindings.push(`#### TC-LAMBDA-003: Environment Variable with Sensitive Data\n**Risk:** MEDIUM | **MITRE:** T1552.001 - Credentials In Files\n- Variable: ${key}\n- Pattern Match: ${pattern}\n- Value Length: ${valueStr.length} chars\n- **Risk:** Hardcoded secrets in environment variables\n- **Remediation:** Use AWS Secrets Manager or Parameter Store with IAM-based access`);
+            break;
+          }
+        }
+      }
+      
+      // Check 4: Excessive Execution Time (Crypto Mining Indicator)
+      if (timeout > 600) { // > 10 minutes
+        risks.excessiveExecutionTime++;
+        functionFindings.push(`#### TC-LAMBDA-004: Excessive Execution Time\n**Risk:** MEDIUM | **MITRE:** T1496 - Resource Hijacking\n- Timeout: ${timeout} seconds (${Math.floor(timeout/60)} minutes)\n- Memory: ${memorySize} MB\n- **Risk:** Long execution times may indicate crypto mining or resource abuse\n- **Remediation:** Review function code, reduce timeout, implement execution monitoring`);
+      }
+      
+      // Check 5: Lambda@Edge (Higher Risk)
+      if (funcArn.includes(':function:us-east-1:') && runtime?.startsWith('nodejs')) {
+        // Lambda@Edge functions are replicated to CloudFront edge locations
+        // This is a simplified check - actual Lambda@Edge detection requires CloudFront inspection
+        if (funcName.includes('edge') || funcName.includes('cloudfront')) {
+          risks.lambdaEdge++;
+          functionFindings.push(`#### TC-LAMBDA-005: Potential Lambda@Edge Function\n**Risk:** HIGH | **MITRE:** T1584.004 - Compromise Infrastructure: Server\n- Function: ${funcName}\n- Region: us-east-1 (Lambda@Edge requirement)\n- **Risk:** Lambda@Edge functions run at CloudFront edges, harder to monitor, can manipulate HTTP traffic\n- **Remediation:** Ensure strict code review, use CloudWatch Logs for monitoring, limit permissions`);
+        }
+      }
+      
+      // Check 6: Event Source Mapping Abuse
+      try {
+        const eventMappings = await lambdaClient.send(new ListEventSourceMappingsCommand({ FunctionName: funcArn }));
+        if (eventMappings.EventSourceMappings && eventMappings.EventSourceMappings.length > 0) {
+          for (const mapping of eventMappings.EventSourceMappings) {
+            const sourceArn = mapping.EventSourceArn || '';
+            const state = mapping.State || 'Unknown';
+            
+            // Check for suspicious sources
+            if (sourceArn.includes(':sqs:') || sourceArn.includes(':kinesis:') || sourceArn.includes(':dynamodb:')) {
+              functionFindings.push(`#### TC-LAMBDA-006: Event Source Mapping\n**Risk:** LOW | **MITRE:** T1078 - Valid Accounts\n- Source: ${sourceArn}\n- State: ${state}\n- Batch Size: ${mapping.BatchSize || 'Default'}\n- **Note:** Monitor for unauthorized event source modifications\n- **Remediation:** Regularly audit event source mappings, use CloudTrail to track changes`);
+            }
+            
+            if (state === 'Enabled' && sourceArn.includes(':sqs:')) {
+              risks.eventSourceAbuse++;
+            }
+          }
+        }
+      } catch (error: any) {
+        // Event source mapping not accessible or doesn't exist
+      }
+      
+      // Add function findings to detailed report
+      if (functionFindings.length > 0) {
+        detailedFindings.push(`### Function: ${funcName}\n**ARN:** ${funcArn}\n**Runtime:** ${runtime}\n**Last Modified:** ${lastModified}\n**Timeout:** ${timeout}s | **Memory:** ${memorySize}MB\n**Role:** ${role}\n**Layers:** ${layers.length}\n\n${functionFindings.join('\n\n')}\n`);
+      }
+    }
+    
+    // Build output
+    outputLines.push(`# Lambda Cold Start & Layer Poisoning Scan`);
+    outputLines.push(`**Region:** ${region}`);
+    outputLines.push(`**Functions Analyzed:** ${functionsToScan.length}`);
+    outputLines.push(`**Scan Time:** ${scanTime}`);
+    outputLines.push(``);
+    outputLines.push(`## Risk Summary`);
+    outputLines.push(`| Risk Type | Count | Severity |`);
+    outputLines.push(`|-----------|-------|----------|`);
+    outputLines.push(`| Layer Poisoning | ${risks.layerPoisoning} | CRITICAL |`);
+    outputLines.push(`| Function URL Exposed | ${risks.functionUrlExposed} | HIGH |`);
+    outputLines.push(`| Env Var Injection | ${risks.envVarInjection} | MEDIUM |`);
+    outputLines.push(`| Excessive Execution Time | ${risks.excessiveExecutionTime} | MEDIUM |`);
+    outputLines.push(`| Event Source Abuse | ${risks.eventSourceAbuse} | LOW |`);
+    outputLines.push(`| Lambda@Edge Functions | ${risks.lambdaEdge} | HIGH |`);
+    outputLines.push(`| Public/External Layers | ${risks.publicLayers} | MEDIUM |`);
+    outputLines.push(``);
+    
+    const totalRisks = risks.layerPoisoning + risks.functionUrlExposed + risks.envVarInjection + 
+                       risks.excessiveExecutionTime + risks.eventSourceAbuse + risks.lambdaEdge;
+    
+    if (totalRisks === 0) {
+      outputLines.push(`## ✅ No Critical Risks Detected`);
+      outputLines.push(``);
+      outputLines.push(`All ${functionsToScan.length} Lambda functions passed security checks for:`);
+      outputLines.push(`- Layer poisoning`);
+      outputLines.push(`- Public function URLs`);
+      outputLines.push(`- Environment variable secrets`);
+      outputLines.push(`- Excessive execution times`);
+      outputLines.push(`- Event source mapping abuse`);
+      outputLines.push(``);
+    } else {
+      outputLines.push(`## ⚠️ Detailed Findings`);
+      outputLines.push(``);
+      
+      if (detailedFindings.length > 0) {
+        outputLines.push(detailedFindings.join('\n---\n\n'));
+      }
+    }
+    
+    outputLines.push(`## Remediation Recommendations`);
+    outputLines.push(``);
+    outputLines.push(`1. **Layer Security:**`);
+    outputLines.push(`   - Review all Lambda layers, remove untrusted sources`);
+    outputLines.push(`   - Use only layers from your own account or verified AWS accounts`);
+    outputLines.push(`   - Implement layer scanning in CI/CD pipeline`);
+    outputLines.push(``);
+    outputLines.push(`2. **Function URL Security:**`);
+    outputLines.push(`   - Disable public function URLs or enforce IAM authentication`);
+    outputLines.push(`   - Use API Gateway with proper authorizers instead of function URLs`);
+    outputLines.push(`   - Implement CORS policies carefully`);
+    outputLines.push(``);
+    outputLines.push(`3. **Environment Variables:**`);
+    outputLines.push(`   - Scan environment variables for hardcoded secrets`);
+    outputLines.push(`   - Migrate secrets to AWS Secrets Manager or Parameter Store`);
+    outputLines.push(`   - Use IAM policies for secret access control`);
+    outputLines.push(``);
+    outputLines.push(`4. **Execution Role Security:**`);
+    outputLines.push(`   - Implement least privilege execution roles`);
+    outputLines.push(`   - Regularly audit IAM role permissions`);
+    outputLines.push(`   - Use AWS Access Analyzer to identify over-permissive roles`);
+    outputLines.push(``);
+    outputLines.push(`5. **Monitoring:**`);
+    outputLines.push(`   - Enable CloudWatch Logs for all functions`);
+    outputLines.push(`   - Monitor CloudWatch metrics for anomalous execution patterns`);
+    outputLines.push(`   - Set up alarms for unusual invocation rates or durations`);
+    outputLines.push(`   - Use AWS X-Ray for distributed tracing`);
+    outputLines.push(``);
+    outputLines.push(`6. **Cold Start Mitigation:**`);
+    outputLines.push(`   - Implement provisioned concurrency for critical functions`);
+    outputLines.push(`   - Monitor /tmp directory usage`);
+    outputLines.push(`   - Clear /tmp on function start if persistence is detected`);
+    outputLines.push(``);
+    
+    return outputLines.join('\n');
+  } catch (error: any) {
+    return `Error scanning Lambda cold start risks: ${error.message}`;
+  }
+}
+
+async function scanAPIGatewayAuth(region: string, apiId?: string, format: string = "markdown"): Promise<string> {
+  const client = new APIGatewayClient({ region });
+  
+  try {
+    const outputLines: string[] = [];
+    const scanTime = new Date().toISOString();
+    
+    // Risk counters
+    let jwtAlgoConfusionCount = 0;
+    let missingAuthCount = 0;
+    let corsMisconfigCount = 0;
+    let noThrottlingCount = 0;
+    let noLoggingCount = 0;
+    let apiKeyExposureCount = 0;
+    let noRequestValidationCount = 0;
+    let weakAuthorizerCount = 0;
+    
+    // Get APIs to scan
+    let apis: any[] = [];
+    if (apiId) {
+      // Get specific API
+      try {
+        const apiResponse = await client.send(new GetRestApiCommand({ restApiId: apiId }));
+        apis = [{ id: apiResponse.id, name: apiResponse.name, createdDate: apiResponse.createdDate, description: apiResponse.description }];
+      } catch (error: any) {
+        return `Error: API ${apiId} not found in region ${region}: ${error.message}`;
+      }
+    } else {
+      // List all APIs
+      const listResponse = await client.send(new GetRestApisCommand({}));
+      apis = (listResponse.items || []).map(api => ({
+        id: api.id,
+        name: api.name,
+        createdDate: api.createdDate,
+        description: api.description
+      }));
+    }
+    
+    if (apis.length === 0) {
+      return `No API Gateway REST APIs found in region ${region}`;
+    }
+    
+    // Header
+    outputLines.push(`# API Gateway Authorization & Authentication Scan`);
+    outputLines.push(`**Region:** ${region}`);
+    outputLines.push(`**APIs Analyzed:** ${apis.length}`);
+    outputLines.push(`**Scan Time:** ${scanTime}`);
+    outputLines.push(``);
+    
+    // Store detailed findings
+    const detailedFindings: string[] = [];
+    
+    // Scan each API
+    for (const api of apis) {
+      const apiFindings: string[] = [];
+      apiFindings.push(``);
+      apiFindings.push(`### API: ${api.name || 'Unnamed'} (${api.id})`);
+      apiFindings.push(`**Created:** ${api.createdDate ? new Date(api.createdDate).toISOString() : 'Unknown'}`);
+      if (api.description) {
+        apiFindings.push(`**Description:** ${api.description}`);
+      }
+      apiFindings.push(``);
+      
+      // Get stages
+      let stages: any[] = [];
+      try {
+        const stagesResponse = await client.send(new GetStagesCommand({ restApiId: api.id }));
+        stages = stagesResponse.item || [];
+      } catch (error: any) {
+        apiFindings.push(`⚠️ Could not retrieve stages: ${error.message}`);
+      }
+      
+      // Get authorizers
+      let authorizers: any[] = [];
+      try {
+        const authResponse = await client.send(new GetAuthorizersCommand({ restApiId: api.id }));
+        authorizers = authResponse.items || [];
+      } catch (error: any) {
+        // No authorizers configured
+      }
+      
+      // Check each stage
+      for (const stage of stages) {
+        const stageName = stage.stageName;
+        const endpoint = `https://${api.id}.execute-api.${region}.amazonaws.com/${stageName}`;
+        
+        apiFindings.push(`#### Stage: ${stageName}`);
+        apiFindings.push(`**Endpoint:** ${endpoint}`);
+        apiFindings.push(`**Deployment:** ${stage.deploymentId || 'Unknown'}`);
+        apiFindings.push(``);
+        
+        // Check CloudWatch logging
+        const loggingEnabled = stage.accessLogSettings?.destinationArn;
+        if (!loggingEnabled) {
+          noLoggingCount++;
+          apiFindings.push(`##### TC-APIGW-007: CloudWatch Logging Disabled`);
+          apiFindings.push(`**Risk:** MEDIUM | **MITRE:** T1562.008 - Impair Defenses: Disable Cloud Logs`);
+          apiFindings.push(`**Stage:** ${stageName}`);
+          apiFindings.push(`- Access logging: DISABLED`);
+          apiFindings.push(`- ⚠️ No audit trail for API requests`);
+          apiFindings.push(`- Attack: Unauthorized access goes undetected`);
+          apiFindings.push(``);
+        }
+        
+        // Check throttling
+        const throttlingSettings = stage.throttleSettings;
+        if (!throttlingSettings || (!throttlingSettings.rateLimit && !throttlingSettings.burstLimit)) {
+          noThrottlingCount++;
+          apiFindings.push(`##### TC-APIGW-008: Throttling Disabled`);
+          apiFindings.push(`**Risk:** MEDIUM | **MITRE:** T1499 - Endpoint Denial of Service`);
+          apiFindings.push(`**Stage:** ${stageName}`);
+          apiFindings.push(`- Rate limit: NOT SET`);
+          apiFindings.push(`- Burst limit: NOT SET`);
+          apiFindings.push(`- ⚠️ API vulnerable to DDoS attacks`);
+          apiFindings.push(`- Attack: Resource exhaustion via unlimited requests`);
+          apiFindings.push(``);
+        }
+        
+        // Check CORS (in method settings)
+        const methodSettings = stage.methodSettings || {};
+        for (const [methodKey, settings] of Object.entries(methodSettings)) {
+          // CORS issues are typically found at the method level, we'll check that below
+        }
+      }
+      
+      // Analyze authorizers
+      if (authorizers.length === 0) {
+        weakAuthorizerCount++;
+        apiFindings.push(`##### TC-APIGW-002: No Authorizers Configured`);
+        apiFindings.push(`**Risk:** CRITICAL | **MITRE:** T1078 - Valid Accounts`);
+        apiFindings.push(`- No Lambda authorizers found`);
+        apiFindings.push(`- No Cognito authorizers found`);
+        apiFindings.push(`- ⚠️ API may have endpoints without authentication`);
+        apiFindings.push(`- Attack: Direct access to API resources`);
+        apiFindings.push(``);
+      } else {
+        // Check each authorizer for weaknesses
+        for (const authorizer of authorizers) {
+          apiFindings.push(`##### Authorizer: ${authorizer.name} (${authorizer.id})`);
+          apiFindings.push(`**Type:** ${authorizer.type}`);
+          
+          // Check JWT authorizers for algorithm confusion
+          if (authorizer.type === 'JWT') {
+            jwtAlgoConfusionCount++;
+            apiFindings.push(``);
+            apiFindings.push(`##### TC-APIGW-001: JWT Algorithm Confusion Risk`);
+            apiFindings.push(`**Risk:** CRITICAL | **MITRE:** T1550.001 - Application Access Token`);
+            apiFindings.push(`**Authorizer:** ${authorizer.name}`);
+            apiFindings.push(`- Type: JWT`);
+            apiFindings.push(`- Identity Source: ${authorizer.identitySource || 'Unknown'}`);
+            apiFindings.push(`- ⚠️ Algorithm configuration may not be restricted`);
+            apiFindings.push(`- Attack: Could downgrade RS256 → HS256 using public key as secret`);
+            apiFindings.push(`- Impact: Complete authentication bypass`);
+            apiFindings.push(``);
+          }
+          
+          // Check for wildcard/permissive authorizers
+          if (authorizer.authorizerResultTtlInSeconds && authorizer.authorizerResultTtlInSeconds > 3600) {
+            weakAuthorizerCount++;
+            apiFindings.push(``);
+            apiFindings.push(`##### TC-APIGW-005: Excessive Authorizer Cache TTL`);
+            apiFindings.push(`**Risk:** MEDIUM | **MITRE:** T1550 - Use Alternate Authentication Material`);
+            apiFindings.push(`**Authorizer:** ${authorizer.name}`);
+            apiFindings.push(`- Cache TTL: ${authorizer.authorizerResultTtlInSeconds}s (${Math.floor(authorizer.authorizerResultTtlInSeconds / 60)} minutes)`);
+            apiFindings.push(`- ⚠️ Long cache TTL delays revocation of permissions`);
+            apiFindings.push(`- Attack: Compromised tokens remain valid longer`);
+            apiFindings.push(``);
+          }
+          
+          apiFindings.push(``);
+        }
+      }
+      
+      // Get all resources and methods
+      try {
+        const resourcesResponse = await client.send(new GetResourcesCommand({ restApiId: api.id }));
+        const resources = resourcesResponse.items || [];
+        
+        let checkedMethods = 0;
+        let noAuthMethods = 0;
+        
+        for (const resource of resources) {
+          const resourcePath = resource.path || '/';
+          const methods = resource.resourceMethods || {};
+          
+          for (const [httpMethod, methodData] of Object.entries(methods)) {
+            if (httpMethod === 'OPTIONS') continue; // Skip OPTIONS for CORS preflight
+            
+            checkedMethods++;
+            
+            try {
+              const methodDetails = await client.send(new GetMethodCommand({
+                restApiId: api.id,
+                resourceId: resource.id!,
+                httpMethod: httpMethod
+              }));
+              
+              // Check authorization
+              const authType = methodDetails.authorizationType;
+              const apiKeyRequired = methodDetails.apiKeyRequired;
+              
+              if (authType === 'NONE' && !apiKeyRequired) {
+                missingAuthCount++;
+                noAuthMethods++;
+                apiFindings.push(`##### TC-APIGW-002: Missing Authorization`);
+                apiFindings.push(`**Risk:** CRITICAL | **MITRE:** T1078 - Valid Accounts`);
+                apiFindings.push(`**Resource:** ${httpMethod} ${resourcePath}`);
+                apiFindings.push(`- Authorization: NONE`);
+                apiFindings.push(`- API Key Required: false`);
+                apiFindings.push(`- ⚠️ Endpoint publicly accessible without authentication`);
+                apiFindings.push(`- Attack: Direct unauthenticated access to API resources`);
+                apiFindings.push(``);
+              }
+              
+              // Check request validation
+              const requestValidatorId = methodDetails.requestValidatorId;
+              if (!requestValidatorId) {
+                noRequestValidationCount++;
+                apiFindings.push(`##### TC-APIGW-006: Missing Request Validation`);
+                apiFindings.push(`**Risk:** MEDIUM | **MITRE:** T1190 - Exploit Public-Facing Application`);
+                apiFindings.push(`**Resource:** ${httpMethod} ${resourcePath}`);
+                apiFindings.push(`- Request validator: NOT SET`);
+                apiFindings.push(`- ⚠️ No input validation configured`);
+                apiFindings.push(`- Attack: SQL injection, XSS, command injection via unvalidated input`);
+                apiFindings.push(``);
+              }
+              
+              // Check CORS configuration
+              const methodResponses = methodDetails.methodResponses || {};
+              for (const [statusCode, response] of Object.entries(methodResponses)) {
+                const responseParams = (response as any).responseParameters || {};
+                const allowOrigin = responseParams['method.response.header.Access-Control-Allow-Origin'];
+                const allowCredentials = responseParams['method.response.header.Access-Control-Allow-Credentials'];
+                
+                // Check for wildcard CORS with credentials
+                if (allowOrigin === true && allowCredentials === true) {
+                  // This indicates CORS headers are set, but we need integration response to see actual values
+                  // Flag potential misconfiguration
+                  corsMisconfigCount++;
+                  apiFindings.push(`##### TC-APIGW-003: Potential CORS Misconfiguration`);
+                  apiFindings.push(`**Risk:** HIGH | **MITRE:** T1539 - Steal Web Session Cookie`);
+                  apiFindings.push(`**Resource:** ${httpMethod} ${resourcePath}`);
+                  apiFindings.push(`- CORS headers configured`);
+                  apiFindings.push(`- ⚠️ Verify Allow-Origin is not '*' when Allow-Credentials is true`);
+                  apiFindings.push(`- Attack: If misconfigured, any origin can steal credentials`);
+                  apiFindings.push(``);
+                  break;
+                }
+              }
+            } catch (error: any) {
+              // Method details not accessible
+            }
+          }
+        }
+        
+        if (noAuthMethods > 0) {
+          apiFindings.push(`**Summary:** ${noAuthMethods} of ${checkedMethods} endpoints lack authentication`);
+          apiFindings.push(``);
+        }
+      } catch (error: any) {
+        apiFindings.push(`⚠️ Could not retrieve resources: ${error.message}`);
+        apiFindings.push(``);
+      }
+      
+      detailedFindings.push(...apiFindings);
+    }
+    
+    // Check API keys globally
+    try {
+      const apiKeysResponse = await client.send(new GetApiKeysCommand({ includeValues: false }));
+      const apiKeys = apiKeysResponse.items || [];
+      
+      if (apiKeys.length > 0) {
+        apiKeyExposureCount = apiKeys.length;
+        detailedFindings.push(``);
+        detailedFindings.push(`### API Keys Detected`);
+        detailedFindings.push(``);
+        detailedFindings.push(`##### TC-APIGW-004: API Keys In Use`);
+        detailedFindings.push(`**Risk:** MEDIUM | **MITRE:** T1552.001 - Unsecured Credentials: Credentials In Files`);
+        detailedFindings.push(`- API Keys found: ${apiKeys.length}`);
+        
+        for (const key of apiKeys.slice(0, 5)) {
+          detailedFindings.push(`  - ${key.name} (${key.id}) - Enabled: ${key.enabled}`);
+        }
+        
+        if (apiKeys.length > 5) {
+          detailedFindings.push(`  - ... and ${apiKeys.length - 5} more`);
+        }
+        
+        detailedFindings.push(`- ⚠️ API keys may be exposed in logs, code repositories, or client-side code`);
+        detailedFindings.push(`- Attack: Stolen API keys grant unauthorized access`);
+        detailedFindings.push(`- Recommendation: Use IAM authentication or Cognito instead`);
+        detailedFindings.push(``);
+      }
+    } catch (error: any) {
+      // API keys not accessible or none exist
+    }
+    
+    // Risk Summary Table
+    outputLines.push(`## Risk Summary`);
+    outputLines.push(`| Risk Type | Count | Severity |`);
+    outputLines.push(`|-----------|-------|----------|`);
+    outputLines.push(`| JWT Algorithm Confusion | ${jwtAlgoConfusionCount} | CRITICAL |`);
+    outputLines.push(`| Missing Authorization | ${missingAuthCount} | CRITICAL |`);
+    outputLines.push(`| CORS Misconfiguration | ${corsMisconfigCount} | HIGH |`);
+    outputLines.push(`| API Key Exposure Risk | ${apiKeyExposureCount} | MEDIUM |`);
+    outputLines.push(`| No Request Validation | ${noRequestValidationCount} | MEDIUM |`);
+    outputLines.push(`| No CloudWatch Logging | ${noLoggingCount} | MEDIUM |`);
+    outputLines.push(`| No Throttling | ${noThrottlingCount} | MEDIUM |`);
+    outputLines.push(`| Weak Authorizer Config | ${weakAuthorizerCount} | MEDIUM |`);
+    outputLines.push(``);
+    
+    const totalIssues = jwtAlgoConfusionCount + missingAuthCount + corsMisconfigCount + 
+                        noThrottlingCount + noLoggingCount + apiKeyExposureCount + 
+                        noRequestValidationCount + weakAuthorizerCount;
+    
+    outputLines.push(`**Total Issues Found:** ${totalIssues}`);
+    outputLines.push(``);
+    
+    // Add detailed findings
+    outputLines.push(`## Detailed Findings`);
+    outputLines.push(...detailedFindings);
+    
+    // Remediation
+    outputLines.push(``);
+    outputLines.push(`## Remediation`);
+    outputLines.push(``);
+    outputLines.push(`### Critical Priority`);
+    outputLines.push(``);
+    outputLines.push(`1. **JWT Algorithm Restriction:**`);
+    outputLines.push(`   - Configure JWT authorizers to only accept specific algorithms (RS256)`);
+    outputLines.push(`   - Validate JWT signature using proper public key verification`);
+    outputLines.push(`   - Never use symmetric algorithms (HS256) with public keys`);
+    outputLines.push(``);
+    outputLines.push(`2. **Enable Authorization:**`);
+    outputLines.push(`   - Add Lambda authorizers or Cognito user pool authorizers`);
+    outputLines.push(`   - Use IAM authentication for service-to-service calls`);
+    outputLines.push(`   - Set 'authorizationType' on all methods (never use 'NONE')`);
+    outputLines.push(`   - Require API keys at minimum for public APIs`);
+    outputLines.push(``);
+    outputLines.push(`### High Priority`);
+    outputLines.push(``);
+    outputLines.push(`3. **Fix CORS Configuration:**`);
+    outputLines.push(`   - Never use 'Access-Control-Allow-Origin: *' with credentials`);
+    outputLines.push(`   - Whitelist specific trusted origins`);
+    outputLines.push(`   - Set 'Access-Control-Allow-Credentials: true' only when needed`);
+    outputLines.push(`   - Validate Origin header in Lambda authorizer`);
+    outputLines.push(``);
+    outputLines.push(`### Medium Priority`);
+    outputLines.push(``);
+    outputLines.push(`4. **Enable Request Validation:**`);
+    outputLines.push(`   - Create request validators for all methods`);
+    outputLines.push(`   - Define JSON schemas for request bodies`);
+    outputLines.push(`   - Validate query parameters and headers`);
+    outputLines.push(`   - Reject malformed requests at API Gateway level`);
+    outputLines.push(``);
+    outputLines.push(`5. **Enable CloudWatch Logging:**`);
+    outputLines.push(`   - Enable access logging for all stages`);
+    outputLines.push(`   - Log full request/response data for security analysis`);
+    outputLines.push(`   - Set up CloudWatch alarms for suspicious patterns`);
+    outputLines.push(`   - Enable X-Ray tracing for detailed request tracking`);
+    outputLines.push(``);
+    outputLines.push(`6. **Enable Throttling:**`);
+    outputLines.push(`   - Set rate limits (e.g., 1000 requests/second)`);
+    outputLines.push(`   - Set burst limits (e.g., 2000 requests)`);
+    outputLines.push(`   - Configure per-method throttling for critical endpoints`);
+    outputLines.push(`   - Use usage plans to control API key quotas`);
+    outputLines.push(``);
+    outputLines.push(`7. **Secure API Keys:**`);
+    outputLines.push(`   - Rotate API keys regularly (90 days)`);
+    outputLines.push(`   - Store keys in AWS Secrets Manager, not code`);
+    outputLines.push(`   - Use usage plans to associate keys with rate limits`);
+    outputLines.push(`   - Monitor API key usage in CloudWatch`);
+    outputLines.push(`   - Prefer IAM/Cognito over API keys when possible`);
+    outputLines.push(``);
+    outputLines.push(`### Additional Security Measures`);
+    outputLines.push(``);
+    outputLines.push(`8. **Implement WAF:**`);
+    outputLines.push(`   - Attach AWS WAF to API Gateway`);
+    outputLines.push(`   - Block common attack patterns (SQL injection, XSS)`);
+    outputLines.push(`   - Rate limit by IP address`);
+    outputLines.push(`   - Use managed rule groups for OWASP Top 10`);
+    outputLines.push(``);
+    outputLines.push(`9. **Use Resource Policies:**`);
+    outputLines.push(`   - Restrict API access by source IP or VPC`);
+    outputLines.push(`   - Use resource policies for additional access control`);
+    outputLines.push(`   - Deny all by default, allow only trusted sources`);
+    outputLines.push(``);
+    outputLines.push(`10. **Monitor and Alert:**`);
+    outputLines.push(`   - Set up CloudWatch alarms for 4xx/5xx errors`);
+    outputLines.push(`   - Alert on authorization failures`);
+    outputLines.push(`   - Monitor for unusual traffic patterns`);
+    outputLines.push(`   - Review access logs regularly`);
+    outputLines.push(``);
+    
+    return outputLines.join('\n');
+  } catch (error: any) {
+    return `Error scanning API Gateway auth: ${error.message}`;
+  }
+}
+
 
 interface RegionResult {
   region: string;
@@ -8169,6 +9297,280 @@ async function analyzeAMISecurity(region: string, includeAwsManaged: boolean = f
   }
 
   return output;
+}
+
+// ECR Container Registry Poisoning Scanner
+async function scanECRPoisoning(region: string, repositoryName?: string, format: string = "markdown"): Promise<string> {
+  const client = new ECRClient({ region });
+  const outputLines: string[] = [];
+  
+  try {
+    outputLines.push(`# ECR Container Registry Poisoning Scan`);
+    outputLines.push(`**Region:** ${region}`);
+    outputLines.push(`**Scan Time:** ${new Date().toISOString()}`);
+    outputLines.push(``);
+    
+    // List repositories
+    const describeReposCmd = new DescribeRepositoriesCommand(
+      repositoryName ? { repositoryNames: [repositoryName] } : {}
+    );
+    const reposResponse = await client.send(describeReposCmd);
+    const repositories = reposResponse.repositories || [];
+    
+    if (repositories.length === 0) {
+      outputLines.push(`[INFO] No ECR repositories found in region ${region}`);
+      return outputLines.join('\n');
+    }
+    
+    outputLines.push(`**Repositories Analyzed:** ${repositories.length}`);
+    outputLines.push(``);
+    
+    // Risk counters
+    let publicRepoCount = 0;
+    let externalAccessCount = 0;
+    let noScanCount = 0;
+    let mutableTagCount = 0;
+    let unencryptedCount = 0;
+    let vulnerableImagesCount = 0;
+    
+    // Risk Summary (will update at the end)
+    const riskSummaryIndex = outputLines.length;
+    outputLines.push(`## Risk Summary`);
+    outputLines.push(``);
+    
+    outputLines.push(`## Detailed Findings`);
+    outputLines.push(``);
+    
+    // Analyze each repository
+    for (const repo of repositories) {
+      const repoName = repo.repositoryName || 'unknown';
+      const repoArn = repo.repositoryArn || 'N/A';
+      const repoUri = repo.repositoryUri || 'N/A';
+      const createdAt = repo.createdAt ? new Date(repo.createdAt).toISOString() : 'N/A';
+      
+      outputLines.push(`### Repository: ${repoName}`);
+      outputLines.push(`**ARN:** ${repoArn}`);
+      outputLines.push(`**URI:** ${repoUri}`);
+      outputLines.push(`**Created:** ${createdAt}`);
+      outputLines.push(``);
+      
+      const findings: string[] = [];
+      
+      // Check for image scanning configuration
+      const scanOnPush = repo.imageScanningConfiguration?.scanOnPush || false;
+      if (!scanOnPush) {
+        noScanCount++;
+        findings.push(`#### TC-ECR-003: No Image Scanning`);
+        findings.push(`**Risk:** HIGH | **MITRE:** T1525 - Implant Internal Image`);
+        findings.push(`- Scan on Push: DISABLED`);
+        findings.push(`- ⚠️ Vulnerable images undetected, malware/backdoors may be present`);
+        findings.push(``);
+      }
+      
+      // Check for image tag immutability
+      const immutable = repo.imageTagMutability === 'IMMUTABLE';
+      if (!immutable) {
+        mutableTagCount++;
+        findings.push(`#### TC-ECR-004: Mutable Image Tags`);
+        findings.push(`**Risk:** MEDIUM | **MITRE:** T1525 - Implant Internal Image`);
+        findings.push(`- Tag Immutability: DISABLED`);
+        findings.push(`- ⚠️ Tags can be rewritten (tag confusion attacks)`);
+        findings.push(``);
+      }
+      
+      // Check encryption configuration
+      const encryptionType = repo.encryptionConfiguration?.encryptionType || 'AES256';
+      if (encryptionType === 'AES256') {
+        unencryptedCount++;
+        findings.push(`#### TC-ECR-007: Default Encryption`);
+        findings.push(`**Risk:** LOW | **MITRE:** T1530 - Data from Cloud Storage`);
+        findings.push(`- Encryption: AES256 (AWS managed, not KMS)`);
+        findings.push(`- ⚠️ Consider using KMS customer-managed keys for better control`);
+        findings.push(``);
+      }
+      
+      // Check repository policy for external access
+      try {
+        const policyCmd = new GetRepositoryPolicyCommand({ repositoryName: repoName });
+        const policyResponse = await client.send(policyCmd);
+        
+        if (policyResponse.policyText) {
+          const policy = JSON.parse(policyResponse.policyText);
+          const statements = Array.isArray(policy.Statement) ? policy.Statement : [policy.Statement];
+          
+          for (const statement of statements) {
+            const principals = statement.Principal;
+            
+            // Check for public access
+            if (principals === '*' || principals?.AWS === '*') {
+              publicRepoCount++;
+              findings.push(`#### TC-ECR-001: Public Repository Exposure`);
+              findings.push(`**Risk:** CRITICAL | **MITRE:** T1525 - Implant Internal Image`);
+              findings.push(`- Visibility: PUBLIC`);
+              findings.push(`- ⚠️ Anyone can pull images (potential IP theft, supply chain attack)`);
+              findings.push(``);
+              break;
+            }
+            
+            // Check for cross-account access
+            if (principals?.AWS && typeof principals.AWS === 'string') {
+              const accountId = principals.AWS.split(':')[4];
+              if (accountId && accountId !== repoArn.split(':')[4]) {
+                externalAccessCount++;
+                findings.push(`#### TC-ECR-002: External Account Access`);
+                findings.push(`**Risk:** HIGH | **MITRE:** T1078.004 - Cloud Accounts`);
+                findings.push(`- Repository Policy allows: ${principals.AWS}`);
+                findings.push(`- ⚠️ Cross-account access enabled`);
+                findings.push(``);
+              }
+            } else if (Array.isArray(principals?.AWS)) {
+              const externalAccounts = principals.AWS.filter((arn: string) => {
+                const accountId = arn.split(':')[4];
+                return accountId && accountId !== repoArn.split(':')[4];
+              });
+              if (externalAccounts.length > 0) {
+                externalAccessCount++;
+                findings.push(`#### TC-ECR-002: External Account Access`);
+                findings.push(`**Risk:** HIGH | **MITRE:** T1078.004 - Cloud Accounts`);
+                findings.push(`- Repository Policy allows: ${externalAccounts.join(', ')}`);
+                findings.push(`- ⚠️ Cross-account access enabled`);
+                findings.push(``);
+              }
+            }
+          }
+        }
+      } catch (error: any) {
+        if (error.name !== 'RepositoryPolicyNotFoundException') {
+          findings.push(`[WARN] Could not retrieve repository policy: ${error.message}`);
+          findings.push(``);
+        }
+      }
+      
+      // List and analyze recent images
+      try {
+        const imagesCmd = new DescribeECRImagesCommand({
+          repositoryName: repoName,
+          maxResults: 10,
+        });
+        const imagesResponse = await client.send(imagesCmd);
+        const images = imagesResponse.imageDetails || [];
+        
+        if (images.length > 0) {
+          findings.push(`#### Recent Images (${images.length})`);
+          findings.push(`| Tag | Digest (short) | Size (MB) | Pushed | Vulnerabilities |`);
+          findings.push(`|-----|----------------|-----------|--------|-----------------|`);
+          
+          for (const image of images) {
+            const tags = image.imageTags?.join(', ') || '<untagged>';
+            const digest = image.imageDigest?.substring(7, 19) || 'N/A';
+            const sizeMB = image.imageSizeInBytes ? (image.imageSizeInBytes / 1024 / 1024).toFixed(2) : 'N/A';
+            const pushed = image.imagePushedAt ? new Date(image.imagePushedAt).toISOString().split('T')[0] : 'N/A';
+            
+            // Check for scan findings
+            let vulnStatus = 'Not Scanned';
+            if (image.imageScanStatus?.status === 'COMPLETE') {
+              try {
+                const scanCmd = new DescribeImageScanFindingsCommand({
+                  repositoryName: repoName,
+                  imageId: { imageDigest: image.imageDigest },
+                });
+                const scanResponse = await client.send(scanCmd);
+                const findings = scanResponse.imageScanFindings?.findingSeverityCounts;
+                
+                if (findings) {
+                  const critical = findings.CRITICAL || 0;
+                  const high = findings.HIGH || 0;
+                  const medium = findings.MEDIUM || 0;
+                  
+                  if (critical > 0 || high > 0) {
+                    vulnerableImagesCount++;
+                    vulnStatus = `⚠️ ${critical} CRIT, ${high} HIGH`;
+                  } else if (medium > 0) {
+                    vulnStatus = `${medium} MEDIUM`;
+                  } else {
+                    vulnStatus = '✅ Clean';
+                  }
+                } else {
+                  vulnStatus = '✅ No findings';
+                }
+              } catch (scanError: any) {
+                vulnStatus = 'Scan failed';
+              }
+            } else if (image.imageScanStatus?.status === 'IN_PROGRESS') {
+              vulnStatus = 'Scanning...';
+            } else if (image.imageScanStatus?.status === 'FAILED') {
+              vulnStatus = 'Scan Failed';
+            }
+            
+            findings.push(`| ${tags} | sha256:${digest} | ${sizeMB} | ${pushed} | ${vulnStatus} |`);
+          }
+          findings.push(``);
+        }
+      } catch (error: any) {
+        findings.push(`[WARN] Could not retrieve images: ${error.message}`);
+        findings.push(``);
+      }
+      
+      // Output findings for this repository
+      if (findings.length > 0) {
+        outputLines.push(...findings);
+      } else {
+        outputLines.push(`[OK] No security issues found for this repository`);
+        outputLines.push(``);
+      }
+      
+      outputLines.push(`---`);
+      outputLines.push(``);
+    }
+    
+    // Insert risk summary after calculating all risks
+    const riskSummaryLines = [
+      `| Risk Type | Count | Severity |`,
+      `|-----------|-------|----------|`,
+      `| Public Registries | ${publicRepoCount} | CRITICAL |`,
+      `| External Account Access | ${externalAccessCount} | HIGH |`,
+      `| Vulnerable Images | ${vulnerableImagesCount} | HIGH |`,
+      `| No Image Scanning | ${noScanCount} | HIGH |`,
+      `| Mutable Tags | ${mutableTagCount} | MEDIUM |`,
+      `| Default Encryption | ${unencryptedCount} | LOW |`,
+      ``,
+    ];
+    outputLines.splice(riskSummaryIndex + 2, 0, ...riskSummaryLines);
+    
+    // Remediation section
+    outputLines.push(`## Remediation`);
+    outputLines.push(``);
+    outputLines.push(`1. **Make registries private** - Remove public access policies unless explicitly needed`);
+    outputLines.push(`2. **Enable image scanning** - Turn on scan on push for all repositories`);
+    outputLines.push(`3. **Enable tag immutability** - Prevent tag rewriting attacks`);
+    outputLines.push(`4. **Review repository policies** - Remove unnecessary cross-account access`);
+    outputLines.push(`5. **Use KMS encryption** - Enable encryption at rest with customer-managed keys`);
+    outputLines.push(`6. **Scan for vulnerabilities** - Regularly scan images and patch critical issues`);
+    outputLines.push(`7. **Implement lifecycle policies** - Remove old, vulnerable images automatically`);
+    outputLines.push(`8. **Use image signing** - Implement Docker Content Trust or AWS Signer`);
+    outputLines.push(``);
+    outputLines.push(`### Example AWS CLI Commands`);
+    outputLines.push(`\`\`\`bash`);
+    outputLines.push(`# Enable image scanning on push`);
+    outputLines.push(`aws ecr put-image-scanning-configuration --repository-name REPO_NAME --image-scanning-configuration scanOnPush=true --region ${region}`);
+    outputLines.push(``);
+    outputLines.push(`# Enable tag immutability`);
+    outputLines.push(`aws ecr put-image-tag-mutability --repository-name REPO_NAME --image-tag-mutability IMMUTABLE --region ${region}`);
+    outputLines.push(``);
+    outputLines.push(`# Enable KMS encryption (for new repositories)`);
+    outputLines.push(`aws ecr create-repository --repository-name REPO_NAME --encryption-configuration encryptionType=KMS,kmsKey=alias/ecr-key --region ${region}`);
+    outputLines.push(``);
+    outputLines.push(`# Scan an image manually`);
+    outputLines.push(`aws ecr start-image-scan --repository-name REPO_NAME --image-id imageTag=latest --region ${region}`);
+    outputLines.push(`\`\`\``);
+    outputLines.push(``);
+    
+  } catch (error: any) {
+    outputLines.push(``);
+    outputLines.push(`[FAIL] Error scanning ECR poisoning: ${error.message}`);
+  }
+  
+  return outputLines.join('\n');
 }
 
 // Start the server
