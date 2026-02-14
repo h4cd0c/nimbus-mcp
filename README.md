@@ -2,7 +2,7 @@
 
 # Nimbus - AWS Security Assessment MCP Server
 
-[![Version](https://img.shields.io/badge/version-1.5.10-blue.svg)](https://github.com/h4cd0c/nimbus-mcp)
+[![Version](https://img.shields.io/badge/version-1.5.8-blue.svg)](https://github.com/h4cd0c/nimbus-mcp)
 [![Tools](https://img.shields.io/badge/tools-45-green.svg)](https://github.com/h4cd0c/nimbus-mcp)
 [![Tests](https://img.shields.io/badge/tests-95%20passing-brightgreen.svg)](https://jestjs.io/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
