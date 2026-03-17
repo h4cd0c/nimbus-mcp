@@ -11,6 +11,7 @@ out/
 coverage/
 .nyc_output/
 *.test.js.snap
+tests/functional/
 
 # Environment & Secrets
 .env
