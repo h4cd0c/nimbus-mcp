@@ -67,10 +67,10 @@ describe('AWS Tool Structure Validation', () => {
 describe('Tool Naming Conventions', () => {
   const validToolNames = [
     'aws_whoami',
-    'aws_enumerate_ec2_instances',
+    'aws_enumerate_resources',
     'aws_analyze_s3_security',
     'aws_scan_secrets_manager',
-    'aws_detect_privesc_patterns',
+    'aws_detect_attack_patterns',
     'aws_build_attack_chains',
   ];
 
@@ -108,31 +108,24 @@ describe('Tool Naming Conventions', () => {
 
 describe('Tool Categories', () => {
   const toolCategories = {
-    utility: ['aws_help', 'aws_whoami', 'aws_cache_stats', 'aws_cache_clear'],
+    utility: ['aws_help', 'aws_whoami', 'aws_cache_manager', 'aws_list_active_regions'],
     enumeration: [
-      'aws_enumerate_ec2_instances',
-      'aws_enumerate_iam_roles',
-      'aws_enumerate_rds_databases',
-      'aws_enumerate_eks_clusters',
-      'aws_enumerate_public_resources',
-      'aws_enumerate_organizations',
-      'aws_enumerate_detection_services',
+      'aws_enumerate_resources',
     ],
     security_analysis: [
       'aws_analyze_s3_security',
-      'aws_analyze_iam_users',
+      'aws_analyze_iam_security',
       'aws_analyze_network_security',
       'aws_analyze_lambda_security',
+      'aws_analyze_eks_security',
       'aws_analyze_encryption_security',
       'aws_analyze_api_distribution_security',
       'aws_analyze_messaging_security',
       'aws_analyze_infrastructure_automation',
       'aws_analyze_iam_trust_chains',
-      'aws_analyze_service_role_chain',
       'aws_analyze_cross_account_movement',
       'aws_analyze_cloudwatch_security',
       'aws_analyze_ec2_metadata_exposure',
-      'aws_analyze_network_exposure',
       'aws_analyze_ami_security',
       'aws_analyze_eks_attack_surface',
     ],
@@ -141,30 +134,18 @@ describe('Tool Categories', () => {
       'aws_scan_elasticache_security',
       'aws_scan_ssm_security',
       'aws_scan_resource_policies',
-      'aws_scan_eks_service_accounts',
       'aws_scan_all_regions',
+      'aws_scan_advanced_attacks',
     ],
     detection: [
-      'aws_detect_permissive_roles',
-      'aws_detect_persistence_mechanisms',
-      'aws_detect_mfa_bypass_vectors',
-      'aws_detect_data_exfiltration_paths',
-      'aws_detect_privesc_patterns',
+      'aws_detect_attack_patterns',
     ],
     reporting: [
-      'aws_generate_security_report',
-      'aws_generate_tra_report',
-      'aws_get_guardduty_findings',
-      'aws_get_audit_logs',
-    ],
-    hunting: [
-      'aws_hunt_eks_secrets',
+      'aws_generate_report',
+      'aws_get_logs',
     ],
     chaining: [
       'aws_build_attack_chains',
-    ],
-    discovery: [
-      'aws_list_active_regions',
     ],
   };
 
@@ -207,8 +188,15 @@ describe('Tool Categories', () => {
 
   it('should count expected number of tools', () => {
     const allTools = Object.values(toolCategories).flat();
-    // AWS has 45 tools total
-    expect(allTools.length).toBe(45);
+    // AWS has 30 tools total (reduced from 50 after Phase 1-5A consolidation: -20 tools)
+    // v1.9.0 Phase 1: Consolidated IAM (3→1, -2) and EKS (4→1, -3) with scanMode pattern
+    // v1.10.0 Phase 2: Consolidated Detection (4→1, -3) with scanMode pattern
+    // v1.11.0 Phase 3A: Consolidated Enumeration (5→1, -4) with resourceType pattern
+    // v1.12.0 Phase 3B: Consolidated Reporting (2→1, -1) with reportType pattern
+    // v1.13.0 Phase 4A: Consolidated Cache (2→1, -1) with cacheMode pattern
+    // v1.13.0 Phase 4B: Consolidated Advanced Attacks (6→1, -5) with attackType pattern
+    // v1.14.0 Phase 5A: Consolidated Logging (2→1, -1) with logType pattern
+    expect(allTools.length).toBe(30);
   });
 });
 

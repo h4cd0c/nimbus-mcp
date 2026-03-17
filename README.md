@@ -2,9 +2,9 @@
 
 # Nimbus - AWS Security Assessment MCP Server
 
-[![Version](https://img.shields.io/badge/version-1.5.8-blue.svg)](https://github.com/h4cd0c/nimbus-mcp)
-[![Tools](https://img.shields.io/badge/tools-45-green.svg)](https://github.com/h4cd0c/nimbus-mcp)
-[![Tests](https://img.shields.io/badge/tests-95%20passing-brightgreen.svg)](https://jestjs.io/)
+[![Version](https://img.shields.io/badge/version-1.15.0-blue.svg)](https://github.com/h4cd0c/nimbus-mcp)
+[![Tools](https://img.shields.io/badge/tools-32-green.svg)](https://github.com/h4cd0c/nimbus-mcp)
+[![Tests](https://img.shields.io/badge/tests-296%20passing-brightgreen.svg)](https://jestjs.io/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 [![AWS SDK](https://img.shields.io/badge/AWS%20SDK-v3-yellow.svg)](https://aws.amazon.com/sdk-for-javascript/)
 [![Status](https://img.shields.io/badge/status-production%20ready-brightgreen.svg)](https://github.com/h4cd0c/nimbus-mcp)
@@ -22,7 +22,7 @@
 
 ## 📖 Overview
 
-**Nimbus** is a comprehensive AWS security assessment framework built on the Model Context Protocol (MCP). It provides 45 production-ready tools covering enumeration, vulnerability scanning, **attack chain building**, privilege escalation analysis (50+ patterns), persistence detection, EKS/Kubernetes security, **multi-region scanning**, and compliance reporting for AWS cloud environments.
+**Nimbus** is a comprehensive AWS security assessment framework built on the Model Context Protocol (MCP). It provides 50 production-ready tools covering enumeration, vulnerability scanning, **attack chain building**, privilege escalation analysis (50+ patterns), persistence detection, EKS/Kubernetes security, **multi-region scanning**, and compliance reporting for AWS cloud environments.
 
 ### 🎯 Use Cases
 
@@ -306,6 +306,7 @@ list_active_regions --scanMode common
 | `aws_scan_sns_security` | Topic encryption (KMS), access policies, HTTP subscriptions | 🔴 Critical: No encryption |
 | `aws_scan_sqs_security` | Queue encryption, dead letter queues, access policies | 🔴 Critical: Public queue access |
 | `aws_scan_cognito_security` | Unauthenticated access, MFA, password policies | 🔴 Critical: Unauth access enabled |
+| `aws_analyze_rds_security` | Public accessibility, encryption, backups, deletion protection, IAM auth (instances/clusters/snapshots) | 🔴 Critical: Public + unencrypted |
 
 </details>
 
@@ -315,6 +316,7 @@ list_active_regions --scanMode common
 | Tool | Analysis | Output |
 |------|----------|--------|
 | `aws_analyze_attack_paths` | IAM privilege escalation, public → internal vectors | Exploitation scenarios with step-by-step chains |
+| `aws_simulate_permissions` | Run `SimulatePrincipalPolicy` against 24 high-value actions; custom action list supported | Allowed/denied breakdown with severity labels for dangerous grants |
 | `aws_generate_security_report` | Aggregate all findings, risk scoring, remediation | PDF/HTML/CSV/Markdown reports |
 
 </details>

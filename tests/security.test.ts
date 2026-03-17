@@ -16,7 +16,7 @@ describe('OWASP MCP-01: Tool Naming and Identification', () => {
     const validNames = [
       'aws_enumerate_ec2_instances',
       'aws_analyze_s3_security',
-      'aws_detect_privesc_patterns',
+      'aws_detect_attack_patterns',
       'aws_whoami',
     ];
     
@@ -44,7 +44,7 @@ describe('OWASP MCP-01: Tool Naming and Identification', () => {
     const descriptiveNames = [
       'aws_enumerate_public_resources',
       'aws_analyze_iam_trust_chains',
-      'aws_detect_mfa_bypass_vectors',
+      'aws_detect_attack_patterns',
       'aws_build_attack_chains',
     ];
     

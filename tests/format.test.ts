@@ -135,8 +135,8 @@ describe('Format Parameter Integration (AWS)', () => {
 
     it('should default to markdown when undefined', () => {
       // In actual implementation, undefined format defaults to markdown
-      const defaultFormat = undefined || 'markdown';
-      expect(defaultFormat).toBe('markdown');
+      const testFormat = (val: string | undefined): string => val ?? 'markdown';
+      expect(testFormat(undefined)).toBe('markdown');
     });
   });
 
@@ -194,7 +194,7 @@ describe('Format Parameter Integration (AWS)', () => {
       const toolNames = [
         'aws_scan_ec2_security',
         'aws_enumerate_iam_users',
-        'aws_detect_privesc_patterns'
+        'aws_detect_attack_patterns'
       ];
       
       toolNames.forEach(toolName => {
@@ -259,7 +259,7 @@ describe('Format Parameter Integration (AWS)', () => {
         totalFindings: 2
       };
       
-      const jsonResult = formatResponse(iamFindings, 'json', 'aws_detect_privesc_patterns');
+      const jsonResult = formatResponse(iamFindings, 'json', 'aws_detect_attack_patterns');
       const parsed = JSON.parse(jsonResult.content[0].text);
       
       expect(parsed.data.patterns[0].pattern).toBe('PassRole + Lambda');

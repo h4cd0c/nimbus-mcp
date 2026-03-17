@@ -5,6 +5,458 @@ All notable changes to **Nimbus** (AWS Security Assessment MCP Server) will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0] - 2026-03-17
+
+### Added ✅ **NEW SECURITY TOOLS**
+- **Expanded tool count from 30 to 32** (+2 tools)
+- **296 tests passing** across 11 test suites
+
+#### New Tools
+
+1. **aws_analyze_rds_security** - RDS/Aurora Security Analysis
+   - **scanModes:** `instances`, `clusters`, `snapshots`, `all`
+   - **Checks:** public accessibility, storage encryption, Multi-AZ, backup retention (< 7 days = MEDIUM), deletion protection, IAM database auth, auto minor version upgrades, snapshot public exposure
+   - **Severity:** CRITICAL (public + unencrypted), HIGH (no deletion protection), MEDIUM (short retention), LOW (minor upgrades disabled)
+   - **Optional:** `dbIdentifier` to target a specific DB instance or cluster
+   - **SDK commands used:** `DescribeDBInstancesCommand`, `DescribeDBClustersCommand`, `DescribeDBSnapshotsCommand`
+
+2. **aws_simulate_permissions** - IAM Permission Simulation
+   - Runs `SimulatePrincipalPolicy` against 24 high-value offensive actions by default
+   - Custom action list supported via comma-separated `actions` parameter
+   - Optional `resourceArn` scope (default `*`)
+   - Highlights dangerous grants: `iam:*`, `sts:AssumeRole`, `ssm:StartSession`, `ec2:*`, `s3:*`, `lambda:*`
+   - Batches 100 actions per API call for efficiency
+   - **Required:** `principalArn` (ARN of the IAM user/role to simulate)
+
+### Fixed 🔧
+- **Cognito dead code in `aws_analyze_messaging_security`** — `scanMode` enum was restricted to `['sns', 'sqs', 'both']`, making the existing `scanCognitoSecurity()` implementation unreachable. Extended enum to `['sns', 'sqs', 'cognito', 'both', 'all']` so Cognito pool analysis is now accessible.
+
+---
+
+## [1.14.0] - 2026-02-16
+
+### Changed 🔄 **PHASE 5A CONSOLIDATION - LOGGING TOOLS**
+- **Reduced tool count from 31 to 30** (-1 tool, cumulative 40% reduction from v1.8.0)
+- Consolidated log retrieval tools into unified interface
+- Consistent logType pattern for all log operations
+
+#### Newly Consolidated Tools (30 total)
+
+1. **aws_get_logs** - Unified Log Retrieval (Phase 5A)
+   - **Integrated:** `aws_get_guardduty_findings`, `aws_get_audit_logs`
+   - **New logTypes:** 'guardduty', 'audit', 'both'
+   - **Benefits:** Single entry point for all log retrieval (GuardDuty findings, audit logs)
+   - **Example:** `logType: "both"` retrieves comprehensive security and operational logs
+   - **Reduction:** 2→1 tool (-1 tool)
+   - **Special Features:**
+     - 'guardduty' mode retrieves AWS threat intelligence findings with severity filtering
+     - 'audit' mode retrieves MCP server audit logs with level, tool, and limit filtering
+     - 'both' mode provides comprehensive log analysis across security and operational domains
+
+### Removed ❌ **DEPRECATED TOOLS**
+- **aws_get_guardduty_findings** - Moved to `aws_get_logs` (logType: "guardduty")
+- **aws_get_audit_logs** - Moved to `aws_get_logs` (logType: "audit")
+
+### Migration Guide
+
+```markdown
+# Before (v1.13.0) - Log Retrieval
+aws_get_guardduty_findings region: us-east-1 severity: HIGH
+aws_get_audit_logs level: ERROR tool: aws_analyze_iam_security limit: 100
+
+# After (v1.14.0) - Log Retrieval
+aws_get_logs logType: guardduty region: us-east-1 severity: HIGH
+aws_get_logs logType: audit level: ERROR tool: aws_analyze_iam_security limit: 100
+aws_get_logs logType: both region: us-east-1  # Comprehensive log retrieval
+```
+
+**Note:** When using `logType: "both"`, the region parameter is optional. If omitted, GuardDuty findings will be skipped and only audit logs will be retrieved.
+
+---
+
+## [1.13.0] - 2026-02-16
+
+### Changed 🔄 **PHASE 4 CONSOLIDATION - CACHE & ADVANCED ATTACKS**
+- **Reduced tool count from 37 to 31** (-6 tools, cumulative 38% reduction from v1.8.0)
+- Consolidated cache management and advanced attack scanning tools  
+- Consistent cacheMode and attackType patterns
+
+#### Newly Consolidated Tools (31 total)
+
+1. **aws_cache_manager** - Unified Cache Management (Phase 4A)
+   - **Integrated:** `aws_cache_stats`, `aws_cache_clear`
+   - **New cacheModes:** 'stats', 'clear', 'both'
+   - **Benefits:** Single entry point for all cache operations (view stats, clear data)
+   - **Example:** `cacheMode: "both"` shows stats then clears cache
+   - **Reduction:** 2→1 tool (-1 tool)
+
+2. **aws_scan_advanced_attacks** - Unified Advanced Attack Scanning (Phase 4B)
+   - **Integrated:** `aws_scan_container_registry_poisoning`, `aws_scan_eventbridge_injection`, `aws_scan_api_gateway_auth`, `aws_scan_app_mesh_security`, `aws_scan_step_functions_attacks`, `aws_scan_imdsv2_bypass`
+   - **New attackTypes:** 'ecr', 'eventbridge', 'api_gateway', 'app_mesh', 'step_functions', 'imds', 'all'
+   - **Benefits:** Single entry point for specialized attack vectors (ECR poisoning, EventBridge injection, API Gateway auth bypass, App Mesh vulnerabilities, Step Functions attacks, IMDSv2 bypass)
+   - **Example:** `attackType: "all"` runs comprehensive attack surface scan
+   - **Reduction:** 6→1 tool (-5 tools)
+   - **Special Features:**
+     - Preserves all type-specific parameters (repositoryName, eventBusName, apiId, meshName, stateMachineArn, instanceId, clusterName)
+     - 'all' mode provides comprehensive attack vector analysis across all 6 attack types
+
+### Removed ❌ **DEPRECATED TOOLS**
+- **aws_cache_stats** - Moved to `aws_cache_manager` (cacheMode: "stats")
+- **aws_cache_clear** - Moved to `aws_cache_manager` (cacheMode: "clear")
+- **aws_scan_container_registry_poisoning** - Moved to `aws_scan_advanced_attacks` (attackType: "ecr")
+- **aws_scan_eventbridge_injection** - Moved to `aws_scan_advanced_attacks` (attackType: "eventbridge")
+- **aws_scan_api_gateway_auth** - Moved to `aws_scan_advanced_attacks` (attackType: "api_gateway")
+- **aws_scan_app_mesh_security** - Moved to `aws_scan_advanced_attacks` (attackType: "app_mesh")
+- **aws_scan_step_functions_attacks** - Moved to `aws_scan_advanced_attacks` (attackType: "step_functions")
+- **aws_scan_imdsv2_bypass** - Moved to `aws_scan_advanced_attacks` (attackType: "imds")
+
+### Migration Guide
+
+```markdown
+# Before (v1.12.0) - Cache Management
+aws_cache_stats format: json
+aws_cache_clear pattern: ec2
+
+# After (v1.13.0) - Cache Management
+aws_cache_manager cacheMode: stats format: json
+aws_cache_manager cacheMode: clear pattern: ec2
+aws_cache_manager cacheMode: both  # Stats then clear
+
+# Before (v1.12.0) - Advanced Attack Scans
+aws_scan_container_registry_poisoning region: us-east-1 repositoryName: my-repo
+aws_scan_eventbridge_injection region: us-east-1 eventBusName: default
+aws_scan_api_gateway_auth region: us-east-1 apiId: abc123
+aws_scan_app_mesh_security region: us-east-1 meshName: my-mesh
+aws_scan_step_functions_attacks region: us-east-1 stateMachineArn: arn:aws:...
+aws_scan_imdsv2_bypass region: us-east-1 instanceId: i-1234567890abcdef0
+
+# After (v1.13.0) - Advanced Attack Scans
+aws_scan_advanced_attacks region: us-east-1 attackType: ecr repositoryName: my-repo
+aws_scan_advanced_attacks region: us-east-1 attackType: eventbridge eventBusName: default
+aws_scan_advanced_attacks region: us-east-1 attackType: api_gateway apiId: abc123
+aws_scan_advanced_attacks region: us-east-1 attackType: app_mesh meshName: my-mesh
+aws_scan_advanced_attacks region: us-east-1 attackType: step_functions stateMachineArn: arn:aws:...
+aws_scan_advanced_attacks region: us-east-1 attackType: imds instanceId: i-1234567890abcdef0
+aws_scan_advanced_attacks region: us-east-1 attackType: all  # Comprehensive attack scan
+```
+
+---
+
+## [1.12.0] - 2026-02-16
+
+### Changed 🔄 **PHASE 3B CONSOLIDATION - REPORTING TOOLS**
+- **Reduced tool count from 38 to 37** (-1 tool, cumulative 26% reduction from v1.8.0)
+- Consolidated security reporting tools into unified interface  
+- Consistent reportType pattern for all report generation operations
+
+#### Newly Consolidated Tools (36 total)
+
+1. **aws_generate_report** - Unified Report Generation
+   - **Integrated:** `aws_generate_security_report`, `aws_generate_tra_report`
+   - **New reportTypes:** 'security', 'tra', 'both'
+   - **Benefits:** Single entry point for all AWS security reports (security assessments, TRA compliance reports, comprehensive both)
+   - **Example:** `reportType: "both"` generates comprehensive assessment (security + TRA reports)
+   - **Reduction:** 2→1 tool (-2 tools)
+   - **Special Features:** 
+     - 'security' mode generates standard security assessment reports
+     - 'tra' mode generates Threat Risk Assessment compliance reports
+     - 'both' mode runs comprehensive assessment with both report types (markdown format only)
+     - Supports multiple formats: markdown, pdf, html, csv (per-report basis)
+     - Framework parameter preserved for TRA reports (e.g., 'NIST', 'MITRE ATT&CK')
+
+### Removed ❌ **DEPRECATED TOOLS**
+- **aws_generate_security_report** - Moved to `aws_generate_report` (reportType: "security")
+- **aws_generate_tra_report** - Moved to `aws_generate_report` (reportType: "tra")
+
+### Migration Guide
+
+```markdown
+# Before (v1.11.0)
+aws_generate_security_report region: us-east-1 format: pdf outputFile: security.pdf
+aws_generate_tra_report region: us-east-1 framework: NIST format: pdf outputFile: tra.pdf
+
+# After (v1.12.0)
+aws_generate_report region: us-east-1 reportType: security format: pdf outputFile: security.pdf
+aws_generate_report region: us-east-1 reportType: tra framework: NIST format: pdf outputFile: tra.pdf
+aws_generate_report region: us-east-1 reportType: both  # Comprehensive assessment (markdown only)
+```
+
+**Note:** When using `reportType: "both"`, the output is in markdown format only. For PDF, HTML, or CSV formats, generate each report type separately.
+
+---
+
+## [1.11.0] - 2026-02-16
+
+### Changed 🔄 **PHASE 3A CONSOLIDATION - ENUMERATION TOOLS**
+- **Reduced tool count from 42 to 38** (-4 tools, cumulative 24% reduction from v1.8.0)
+- Consolidated resource enumeration tools into unified interface  
+- Consistent resourceType pattern across all enumeration operations
+
+#### Newly Consolidated Tools (38 total)
+
+1. **aws_enumerate_resources** - Unified Resource Enumeration
+   - **Integrated:** `aws_enumerate_ec2_instances`, `aws_enumerate_rds_databases`, `aws_enumerate_public_resources`, `aws_enumerate_organizations`, `aws_enumerate_detection_services`
+   - **New resourceTypes:** 'ec2', 'rds', 'public', 'organizations', 'detection', 'all'
+   - **Benefits:** Single entry point for all AWS resource enumeration (EC2 instances, RDS databases, public attack surface, Organizations structure, detection services)
+   - **Example:** `resourceType: "all"` performs comprehensive resource discovery across all categories
+   - **Reduction:** 5→1 tool (-4 tools)
+   - **Special Features:** 
+     - 'all' mode runs comprehensive enumeration with formatted sections
+     - 'organizations' doesn't require region (global service)
+     - 'ec2', 'rds', 'public', 'detection' require region parameter
+
+### Removed ❌ **DEPRECATED TOOLS**
+- **aws_enumerate_ec2_instances** - Moved to `aws_enumerate_resources` (resourceType: "ec2")
+- **aws_enumerate_rds_databases** - Moved to `aws_enumerate_resources` (resourceType: "rds")
+- **aws_enumerate_public_resources** - Moved to `aws_enumerate_resources` (resourceType: "public")
+- **aws_enumerate_organizations** - Moved to `aws_enumerate_resources` (resourceType: "organizations")
+- **aws_enumerate_detection_services** - Moved to `aws_enumerate_resources` (resourceType: "detection")
+
+### Migration Guide
+
+```markdown
+# Before (v1.10.0)
+aws_enumerate_ec2_instances region: us-east-1
+aws_enumerate_rds_databases region: us-east-1
+aws_enumerate_public_resources region: us-east-1
+aws_enumerate_organizations
+aws_enumerate_detection_services region: us-east-1
+
+# After (v1.11.0)
+aws_enumerate_resources region: us-east-1 resourceType: ec2
+aws_enumerate_resources region: us-east-1 resourceType: rds
+aws_enumerate_resources region: us-east-1 resourceType: public
+aws_enumerate_resources resourceType: organizations
+aws_enumerate_resources region: us-east-1 resourceType: detection
+
+# Comprehensive Enumeration (Recommended)
+aws_enumerate_resources region: us-east-1 resourceType: all
+```
+
+### Technical Details
+- All underlying enumeration functions preserved for backward compatibility
+- resourceType validation enforces allowed values: ['ec2', 'rds', 'public', 'organizations', 'detection', 'all']
+- resourceType='all' runs comprehensive enumeration with formatted section headers
+- Tool count: 42→38 (-4 tools)
+- Cumulative reduction from v1.8.0: 50→38 (-12 tools, 24% reduction)
+
+---
+
+## [1.10.0] - 2026-02-16
+
+### Changed 🔄 **PHASE 2 CONSOLIDATION - DETECTION TOOLS**
+- **Reduced tool count from 45 to 42** (-3 tools, cumulative 16% reduction from v1.8.0)
+- Consolidated attack pattern detection tools into unified interface
+- Consistent scanMode pattern across all detection operations
+
+#### Newly Consolidated Tools (42 total)
+
+1. **aws_detect_attack_patterns** - Unified Attack Pattern Detection
+   - **Integrated:** `aws_detect_persistence_mechanisms`, `aws_detect_mfa_bypass_vectors`, `aws_detect_data_exfiltration_paths`, `aws_detect_privesc_patterns`
+   - **New scanModes:** 'persistence', 'mfa_bypass', 'exfiltration', 'privesc', 'all'
+   - **Benefits:** Single entry point for all attack pattern detection (persistence mechanisms, MFA bypass vectors, data exfiltration paths, privilege escalation patterns)
+   - **Example:** `scanMode: "all"` performs comprehensive threat detection across all attack patterns
+   - **Reduction:** 4→1 tool (-3 tools)
+   - **Special Parameters:** 
+     - `principalArn` (optional): Required for scanMode='privesc' to analyze specific IAM principal
+     - `includeRemediation` (boolean, default: true): Include remediation guidance in findings
+
+### Removed ❌ **DEPRECATED TOOLS**
+- **aws_detect_persistence_mechanisms** - Moved to `aws_detect_attack_patterns` (scanMode: "persistence")
+- **aws_detect_mfa_bypass_vectors** - Moved to `aws_detect_attack_patterns` (scanMode: "mfa_bypass")
+- **aws_detect_data_exfiltration_paths** - Moved to `aws_detect_attack_patterns` (scanMode: "exfiltration")
+- **aws_detect_privesc_patterns** - Moved to `aws_detect_attack_patterns` (scanMode: "privesc")
+
+### Migration Guide
+
+```markdown
+# Before (v1.9.0)
+aws_detect_persistence_mechanisms region: us-east-1
+aws_detect_mfa_bypass_vectors region: us-east-1
+aws_detect_data_exfiltration_paths region: us-east-1
+aws_detect_privesc_patterns region: us-east-1 principalArn: arn:aws:iam::123456789012:user/test-user includeRemediation: true
+
+# After (v1.10.0)
+aws_detect_attack_patterns region: us-east-1 scanMode: persistence
+aws_detect_attack_patterns region: us-east-1 scanMode: mfa_bypass
+aws_detect_attack_patterns region: us-east-1 scanMode: exfiltration
+aws_detect_attack_patterns region: us-east-1 scanMode: privesc principalArn: arn:aws:iam::123456789012:user/test-user includeRemediation: true
+
+# Comprehensive Detection (Recommended)
+aws_detect_attack_patterns region: us-east-1 scanMode: all
+```
+
+### Technical Details
+- All underlying detection functions preserved for backward compatibility
+- scanMode validation enforces allowed values: ['persistence', 'mfa_bypass', 'exfiltration', 'privesc', 'all']
+- mode='all' runs comprehensive detection with formatted section headers
+- Tool count: 45→42 (-3 tools)
+- Cumulative reduction from v1.8.0: 50→42 (-8 tools, 16% reduction)
+
+---
+
+## [1.9.0] - 2026-02-16
+
+### Changed 🔄 **PHASE 1 CONSOLIDATION - IAM & EKS**
+- **Reduced tool count from 50 to 45** (-5 tools, 10% reduction)
+- Further consolidation of related IAM and EKS security tools
+- Unified scanMode pattern across high-priority security domains
+
+#### Newly Consolidated Tools (45 total)
+
+1. **aws_analyze_iam_security** - Unified IAM Security Analysis
+   - **Integrated:** `aws_analyze_iam_users`, `aws_enumerate_iam_roles`, `aws_detect_permissive_roles`
+   - **New scanModes:** 'users', 'user_policies', 'roles', 'role_permissions', 'trust_chains', 'service_chains', 'all'
+   - **Benefits:** Single entry point for all IAM security analysis (user enumeration, policy checks, role analysis, permission detection, trust relationship analysis)
+   - **Example:** `scanMode: "all"` performs comprehensive IAM security assessment covering users, roles, permissions, and trust chains
+   - **Reduction:** 3→1 tool (-2 tools)
+
+2. **aws_analyze_eks_security** - Unified EKS Security Analysis
+   - **Integrated:** `aws_enumerate_eks_clusters`, `aws_scan_eks_irsa_risks`, `aws_scan_eks_service_accounts`, `aws_hunt_eks_secrets`
+   - **New scanModes:** 'clusters', 'irsa', 'service_accounts', 'secrets', 'all'
+   - **Benefits:** Complete EKS security coverage in one tool (cluster enumeration, IRSA risks, service account security, secret hunting)
+   - **Example:** `scanMode: "all"` runs full EKS security assessment including cluster config, IRSA trust policies, SA permissions, and secret exposure (requires clusterName parameter)
+   - **Reduction:** 4→1 tool (-3 tools)
+
+### Removed ❌ **DEPRECATED TOOLS**
+- **aws_analyze_iam_users** - Moved to `aws_analyze_iam_security` (scanMode: "users")
+- **aws_enumerate_iam_roles** - Moved to `aws_analyze_iam_security` (scanMode: "roles")
+- **aws_detect_permissive_roles** - Moved to `aws_analyze_iam_security` (scanMode: "role_permissions")
+- **aws_enumerate_eks_clusters** - Moved to `aws_analyze_eks_security` (scanMode: "clusters")
+- **aws_scan_eks_irsa_risks** - Moved to `aws_analyze_eks_security` (scanMode: "irsa")
+- **aws_scan_eks_service_accounts** - Moved to `aws_analyze_eks_security` (scanMode: "service_accounts")
+- **aws_hunt_eks_secrets** - Moved to `aws_analyze_eks_security` (scanMode: "secrets")
+
+### Migration Guide
+
+```markdown
+# Before (v1.8.0)
+aws_analyze_iam_users region: us-east-1
+aws_enumerate_iam_roles region: us-east-1
+aws_detect_permissive_roles region: us-east-1
+aws_enumerate_eks_clusters region: us-east-1
+aws_scan_eks_irsa_risks region: us-east-1 clusterName: prod-cluster
+aws_scan_eks_service_accounts region: us-east-1 clusterName: prod-cluster
+aws_hunt_eks_secrets region: us-east-1 clusterName: prod-cluster
+
+# After (v1.9.0)
+aws_analyze_iam_security region: us-east-1 scanMode: users
+aws_analyze_iam_security region: us-east-1 scanMode: roles
+aws_analyze_iam_security region: us-east-1 scanMode: role_permissions
+aws_analyze_eks_security region: us-east-1 scanMode: clusters
+aws_analyze_eks_security region: us-east-1 clusterName: prod-cluster scanMode: irsa
+aws_analyze_eks_security region: us-east-1 clusterName: prod-cluster scanMode: service_accounts
+aws_analyze_eks_security region: us-east-1 clusterName: prod-cluster scanMode: secrets
+
+# Or use comprehensive scans
+aws_analyze_iam_security region: us-east-1 scanMode: all
+aws_analyze_eks_security region: us-east-1 clusterName: prod-cluster scanMode: all
+```
+
+## [1.8.0] - 2026-02-15
+
+### Changed 🔄 **TOOL CONSOLIDATION - IMPROVED USABILITY**
+- **Reduced tool count from 54 to 50** (-4 tools, 7.4% reduction)
+- Merged related functionality into unified tools with scanMode parameters
+- Improved discoverability and simplified API surface
+
+#### Consolidated Tools (50 total)
+
+1. **aws_analyze_lambda_security** - Comprehensive Lambda Security Analysis
+   - **Integrated:** `aws_scan_lambda_cold_start_risks`, `aws_scan_lambda_edge_exploits`
+   - **New scanModes:** 'enumerate', 'roles', 'cold_start', 'edge', 'both', 'all'
+   - **Benefits:** One tool for all Lambda security needs (enumeration, permissions, cold start risks, Lambda@Edge exploits)
+   - **Example:** `scanMode: "all"` runs comprehensive analysis including layer poisoning, function URL exposure, CloudFront origin manipulation
+
+2. **aws_analyze_network_security** - Comprehensive Network Security Analysis
+   - **Integrated:** `aws_analyze_network_exposure`
+   - **New scanModes:** 'vpcs', 'security_groups', 'exposure', 'both', 'all'
+   - **Benefits:** Unified network analysis (VPCs, security groups, internet-facing resources, VPC peering, Transit Gateway exposure)
+   - **Example:** `scanMode: "all"` covers VPC enumeration + SG rules + exposure analysis
+
+3. **aws_analyze_iam_trust_chains** - Comprehensive IAM Role Analysis
+   - **Integrated:** `aws_analyze_service_role_chain`
+   - **New scanModes:** 'trust', 'service_chain', 'both'
+   - **Benefits:** Single tool for trust relationship analysis and lateral movement through service roles
+   - **Example:** `scanMode: "both"` analyzes trust wildcards + EC2→Lambda→API Gateway chains
+
+### Removed ❌ **DEPRECATED TOOLS**
+- **aws_scan_lambda_cold_start_risks** - Functionality moved to `aws_analyze_lambda_security` (scanMode: "cold_start")
+- **aws_scan_lambda_edge_exploits** - Functionality moved to `aws_analyze_lambda_security` (scanMode: "edge")
+- **aws_analyze_network_exposure** - Functionality moved to `aws_analyze_network_security` (scanMode: "exposure")
+- **aws_analyze_service_role_chain** - Functionality moved to `aws_analyze_iam_trust_chains` (scanMode: "service_chain")
+
+### Migration Guide
+
+```markdown
+# Before (v1.7.0)
+aws_scan_lambda_cold_start_risks region: us-east-1
+aws_scan_lambda_edge_exploits region: us-east-1
+aws_analyze_network_exposure region: us-east-1
+aws_analyze_service_role_chain region: us-east-1
+
+# After (v1.8.0)
+aws_analyze_lambda_security region: us-east-1 scanMode: cold_start
+aws_analyze_lambda_security region: us-east-1 scanMode: edge
+aws_analyze_network_security region: us-east-1 scanMode: exposure
+aws_analyze_iam_trust_chains region: us-east-1 scanMode: service_chain
+
+# Or use comprehensive scans
+aws_analyze_lambda_security region: us-east-1 scanMode: all
+aws_analyze_network_security region: us-east-1 scanMode: all
+aws_analyze_iam_trust_chains scanMode: both
+```
+
+## [1.7.0] - 2026-02-14
+
+### Added 🆕 **CONTAINER & ORCHESTRATION SECURITY**
+- **3 Advanced Attack Detection Tools** - Step Functions, IMDSv2, and App Mesh security
+
+#### New Tools (50 → 53 tools total)
+
+1. **aws_scan_step_functions_attacks** - Step Functions State Machine Exploitation
+   - Detects state machine injection via dynamic JSONPath parameters
+   - Identifies insecure Lambda/API integrations with overly permissive roles
+   - Analyzes execution history for sensitive data exposure (passwords, keys, tokens)
+   - Validates IAM role assumption chain vulnerabilities
+   - Checks express workflow risks (no execution history audit trail)
+   - Flags Wait/Map state abuse potential for resource exhaustion
+   - Monitors activity worker impersonation risks
+   - Scans for hardcoded secrets in state machine definitions
+   - **MITRE:** T1059.006 (Python/JavaScript injection), T1552.001 (Credentials in Files), T1078.004 (Cloud Accounts)
+
+2. **aws_scan_imdsv2_bypass** - IMDSv2 Bypass & Container Escape Detection
+   - Detects IMDSv1 still enabled (allows SSRF token theft)
+   - Identifies SSRF-vulnerable Lambda functions with high hop limits
+   - Checks container metadata exposure in ECS/EKS environments
+   - Validates EKS IRSA configuration (OIDC provider isolation)
+   - Analyzes Lambda environment variable leakage patterns
+   - Scans EC2 launch template misconfigurations
+   - Detects VPC endpoint bypass vulnerabilities
+   - Provides curl command examples for attack simulation
+   - **MITRE:** T1552.005 (Cloud Instance Metadata API), T1078.004 (Cloud Accounts), T1610 (Deploy Container)
+
+3. **aws_scan_app_mesh_security** - AWS App Mesh Service Mesh Vulnerabilities (FIXED)
+   - Fixed syntax errors preventing compilation
+   - Analyzes virtual node/gateway/router configurations
+   - Detects mTLS disabled or weak cipher suites
+   - Identifies backend default overrides bypassing security
+   - Validates access log configurations
+   - **MITRE:** T1557.002 (ARP Cache Poisoning), T1040 (Network Sniffing)
+
+### Technical Implementation
+- All tools use **array-based string building** for optimal performance
+- Comprehensive error handling with graceful degradation
+- SDK integration: @aws-sdk/client-sfn, @aws-sdk/client-ec2, @aws-sdk/client-eks
+- Risk severity scoring with actionable remediation guidance
+- MITRE ATT&CK technique mappings for threat intelligence
+- Support for multi-region scanning
+
+### Fixed 🔧
+- Removed orphaned syntax markers causing compilation errors
+- Fixed duplicate `async function main()` declaration
+- Cleaned up App Mesh security scanner syntax issues
+
 ## [1.6.0] - 2026-02-14
 
 ### Added 🆕 **MAJOR SECURITY EXPANSION**

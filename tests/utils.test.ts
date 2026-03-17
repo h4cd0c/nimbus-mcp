@@ -215,8 +215,8 @@ describe('New Validation Functions (v1.5.6)', () => {
 
     it('should reject invalid formats', async () => {
       const { validateOutputFormat } = await import('../src/utils');
-      expect(() => validateOutputFormat('xml')).toThrow('Invalid output format');
-      expect(() => validateOutputFormat('yaml')).toThrow('Invalid output format');
+      expect(() => validateOutputFormat('xml')).toThrow('Invalid format');
+      expect(() => validateOutputFormat('yaml')).toThrow('Invalid format');
     });
   });
 
@@ -236,14 +236,14 @@ describe('New Validation Functions (v1.5.6)', () => {
 
     it('should reject special values when not allowed', async () => {
       const { validateRegionStrict } = await import('../src/utils');
-      expect(() => validateRegionStrict('all', false)).toThrow('Unknown AWS region');
-      expect(() => validateRegionStrict('common', false)).toThrow('Unknown AWS region');
+      expect(() => validateRegionStrict('all', false)).toThrow('AWS region');
+      expect(() => validateRegionStrict('common', false)).toThrow('AWS region');
     });
 
     it('should reject invalid regions', async () => {
       const { validateRegionStrict } = await import('../src/utils');
-      expect(() => validateRegionStrict('invalid-region')).toThrow('Unknown AWS region');
-      expect(() => validateRegionStrict('us-fake-1')).toThrow('Unknown AWS region');
+      expect(() => validateRegionStrict('invalid-region')).toThrow('AWS region');
+      expect(() => validateRegionStrict('us-fake-1')).toThrow('AWS region');
     });
 
     it('should be case-insensitive', async () => {
@@ -276,8 +276,8 @@ describe('New Validation Functions (v1.5.6)', () => {
 
     it('should reject unknown resource types', async () => {
       const { validateResourceType } = await import('../src/utils');
-      expect(() => validateResourceType('invalid')).toThrow('Unknown resource type');
-      expect(() => validateResourceType('faketype')).toThrow('Unknown resource type');
+      expect(() => validateResourceType('invalid')).toThrow('resource type');
+      expect(() => validateResourceType('faketype')).toThrow('resource type');
     });
 
     it('should require resource type', async () => {

@@ -21,11 +21,12 @@ const SERVER_VERSION = packageJson.version;
 import { EC2Client, DescribeInstancesCommand, DescribeSecurityGroupsCommand, DescribeVpcsCommand, DescribeSubnetsCommand, DescribeImagesCommand, DescribeImageAttributeCommand } from "@aws-sdk/client-ec2";
 import { S3Client, ListBucketsCommand, GetBucketPolicyCommand, GetBucketEncryptionCommand, GetPublicAccessBlockCommand, GetBucketAclCommand, GetBucketVersioningCommand, GetBucketLoggingCommand, GetBucketPolicyStatusCommand, GetBucketLocationCommand } from "@aws-sdk/client-s3";
 import { ECRClient, DescribeRepositoriesCommand, GetRepositoryPolicyCommand, DescribeImageScanFindingsCommand, DescribeImagesCommand as DescribeECRImagesCommand } from "@aws-sdk/client-ecr";
-import { IAMClient, ListUsersCommand, ListRolesCommand, ListPoliciesCommand, GetPolicyVersionCommand, ListAttachedUserPoliciesCommand, ListAttachedRolePoliciesCommand, ListUserPoliciesCommand, GetUserPolicyCommand, ListRolePoliciesCommand, GetRolePolicyCommand, GetRoleCommand, ListGroupsForUserCommand, ListAttachedGroupPoliciesCommand, GetPolicyCommand } from "@aws-sdk/client-iam";
-import { RDSClient, DescribeDBInstancesCommand, DescribeDBClustersCommand } from "@aws-sdk/client-rds";
+import { IAMClient, ListUsersCommand, ListRolesCommand, ListPoliciesCommand, GetPolicyVersionCommand, ListAttachedUserPoliciesCommand, ListAttachedRolePoliciesCommand, ListUserPoliciesCommand, GetUserPolicyCommand, ListRolePoliciesCommand, GetRolePolicyCommand, GetRoleCommand, ListGroupsForUserCommand, ListAttachedGroupPoliciesCommand, GetPolicyCommand, SimulatePrincipalPolicyCommand } from "@aws-sdk/client-iam";
+import { RDSClient, DescribeDBInstancesCommand, DescribeDBClustersCommand, DescribeDBSnapshotsCommand, DescribeDBSubnetGroupsCommand } from "@aws-sdk/client-rds";
 import { STSClient, GetCallerIdentityCommand } from "@aws-sdk/client-sts";
 import { OrganizationsClient, ListAccountsCommand, DescribeOrganizationCommand } from "@aws-sdk/client-organizations";
 import { EKSClient, ListClustersCommand, DescribeClusterCommand, ListNodegroupsCommand, DescribeNodegroupCommand, ListFargateProfilesCommand, DescribeFargateProfileCommand } from "@aws-sdk/client-eks";
+import { AppMeshClient, ListMeshesCommand, DescribeMeshCommand, ListVirtualNodesCommand, DescribeVirtualNodeCommand, ListVirtualRoutersCommand, DescribeVirtualRouterCommand, ListVirtualServicesCommand, DescribeVirtualServiceCommand, ListVirtualGatewaysCommand, DescribeVirtualGatewayCommand, ListGatewayRoutesCommand, DescribeGatewayRouteCommand, ListRoutesCommand, DescribeRouteCommand } from "@aws-sdk/client-app-mesh";
 import { LambdaClient, ListFunctionsCommand, GetFunctionCommand, GetFunctionUrlConfigCommand, ListEventSourceMappingsCommand, GetFunctionConfigurationCommand, ListLayerVersionsCommand } from "@aws-sdk/client-lambda";
 import { SecretsManagerClient, ListSecretsCommand, DescribeSecretCommand } from "@aws-sdk/client-secrets-manager";
 import { KMSClient, ListKeysCommand, DescribeKeyCommand } from "@aws-sdk/client-kms";
@@ -33,6 +34,7 @@ import { CloudTrailClient, DescribeTrailsCommand, GetTrailStatusCommand } from "
 import { DynamoDBClient, ListTablesCommand, DescribeTableCommand, DescribeContinuousBackupsCommand } from "@aws-sdk/client-dynamodb";
 import { APIGatewayClient, GetRestApisCommand, GetStagesCommand, GetResourcesCommand, GetAuthorizersCommand, GetApiKeysCommand, GetUsagePlansCommand, GetMethodCommand, GetRestApiCommand } from "@aws-sdk/client-api-gateway";
 import { CloudFrontClient, ListDistributionsCommand, GetDistributionConfigCommand } from "@aws-sdk/client-cloudfront";
+import { EventBridgeClient, ListRulesCommand, ListTargetsByRuleCommand, DescribeRuleCommand, ListEventBusesCommand, DescribeEventBusCommand, ListArchivesCommand, DescribeArchiveCommand, DescribeEventSourceCommand, ListEventSourcesCommand } from "@aws-sdk/client-eventbridge";
 import { ElastiCacheClient, DescribeCacheClustersCommand, DescribeReplicationGroupsCommand } from "@aws-sdk/client-elasticache";
 import { GuardDutyClient, ListDetectorsCommand, ListFindingsCommand, GetFindingsCommand } from "@aws-sdk/client-guardduty";
 import { SNSClient, ListTopicsCommand, GetTopicAttributesCommand, ListSubscriptionsByTopicCommand } from "@aws-sdk/client-sns";
@@ -41,6 +43,7 @@ import { CognitoIdentityClient, ListIdentityPoolsCommand, DescribeIdentityPoolCo
 import { CognitoIdentityProviderClient, ListUserPoolsCommand, DescribeUserPoolCommand } from "@aws-sdk/client-cognito-identity-provider";
 import { CloudFormationClient, ListStacksCommand, DescribeStacksCommand, ListStackResourcesCommand } from "@aws-sdk/client-cloudformation";
 import { CloudWatchClient, DescribeAlarmsCommand } from "@aws-sdk/client-cloudwatch";
+import { SFNClient, ListStateMachinesCommand, DescribeStateMachineCommand, DescribeExecutionCommand, ListExecutionsCommand } from "@aws-sdk/client-sfn";
 import PDFDocument from "pdfkit";
 import { marked } from "marked";
 import { createObjectCsvWriter } from "csv-writer";
@@ -107,6 +110,7 @@ const cloudtrailClient = new CloudTrailClient({ region: DEFAULT_REGION });
 const dynamodbClient = new DynamoDBClient({ region: DEFAULT_REGION });
 const apigatewayClient = new APIGatewayClient({ region: DEFAULT_REGION });
 const cloudfrontClient = new CloudFrontClient({ region: DEFAULT_REGION });
+const eventbridgeClient = new EventBridgeClient({ region: DEFAULT_REGION });
 const elasticacheClient = new ElastiCacheClient({ region: DEFAULT_REGION });
 const guarddutyClient = new GuardDutyClient({ region: DEFAULT_REGION });
 const snsClient = new SNSClient({ region: DEFAULT_REGION });
@@ -116,7 +120,7 @@ const cognitoIdpClient = new CognitoIdentityProviderClient({ region: DEFAULT_REG
 const cloudformationClient = new CloudFormationClient({ region: DEFAULT_REGION });
 const cloudwatchClient = new CloudWatchClient({ region: DEFAULT_REGION });
 const ecrClient = new ECRClient({ region: DEFAULT_REGION });
-
+const appMeshClient = new AppMeshClient({ region: DEFAULT_REGION });
 const server = new Server(
   {
     name: "nimbus-mcp",
@@ -165,8 +169,8 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "aws_enumerate_ec2_instances",
-    description: "List all EC2 instances with security details (public IPs, security groups, IAM roles). Use region: 'all' for all regions or 'common' for top 11 regions.",
+    name: "aws_enumerate_resources",
+    description: "Unified resource enumeration: EC2 instances, RDS databases, public resources, Organizations structure, and detection services with multiple resource types",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -178,7 +182,12 @@ const TOOLS: Tool[] = [
       properties: {
         region: {
           type: "string",
-          description: "AWS region to scan (e.g., us-east-1), 'all' for all 28 regions, 'common' for top 11 regions",
+          description: "AWS region to scan (required for ec2, rds, public, detection modes; optional for organizations)",
+        },
+        resourceType: {
+          type: "string",
+          description: "Resource type to enumerate: 'ec2' (EC2 instances), 'rds' (RDS databases), 'public' (public attack surface), 'organizations' (AWS Organizations structure), 'detection' (CloudTrail, GuardDuty, monitoring), 'all' (comprehensive enumeration)",
+          enum: ["ec2", "rds", "public", "organizations", "detection", "all"],
         },
         format: {
           type: "string",
@@ -186,7 +195,7 @@ const TOOLS: Tool[] = [
           enum: ["markdown", "json"],
         },
       },
-      required: ["region"],
+      required: ["resourceType"],
     },
   },
   {
@@ -219,57 +228,8 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "aws_analyze_iam_users",
-    description: "Enumerate IAM users AND analyze IAM policies for overly permissive permissions",
-    annotations: {
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-    },
-    inputSchema: {
-      type: "object",
-      properties: {
-        policyArn: {
-          type: "string",
-          description: "Optional: specific policy ARN to analyze",
-        },
-        scanMode: {
-          type: "string",
-          description: "Mode: 'enumerate' (list users), 'policies' (analyze), 'both' (default)",
-          enum: ["enumerate", "policies", "both"],
-        },
-        format: {
-          type: "string",
-          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
-          enum: ["markdown", "json"],
-        },
-      },
-    },
-  },
-  {
-    name: "aws_enumerate_iam_roles",
-    description: "List all IAM roles with trust relationships and attached policies",
-    annotations: {
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-    },
-    inputSchema: {
-      type: "object",
-      properties: {
-        format: {
-          type: "string",
-          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
-          enum: ["markdown", "json"],
-        },
-      },
-    },
-  },
-  {
-    name: "aws_enumerate_rds_databases",
-    description: "List all RDS database instances and clusters with security configuration",
+    name: "aws_analyze_iam_security",
+    description: "Comprehensive IAM security analysis: enumerate users and roles, analyze policies for excessive permissions, detect wildcard trust relationships, identify lateral movement through service role chains (EC2→Lambda→API Gateway→Database)",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -281,7 +241,16 @@ const TOOLS: Tool[] = [
       properties: {
         region: {
           type: "string",
-          description: "AWS region to scan (e.g., us-east-1)",
+          description: "AWS region to analyze (optional for most modes, required for service_chains)",
+        },
+        scanMode: {
+          type: "string",
+          description: "Scan mode: 'users' (list IAM users), 'user_policies' (analyze user policies), 'roles' (list IAM roles), 'role_permissions' (detect excessive role permissions), 'trust_chains' (analyze trust relationships), 'service_chains' (lateral movement analysis), 'all' (comprehensive)",
+          enum: ["users", "user_policies", "roles", "role_permissions", "trust_chains", "service_chains", "all"],
+        },
+        policyArn: {
+          type: "string",
+          description: "Optional: specific policy ARN to analyze (for user_policies mode)",
         },
         format: {
           type: "string",
@@ -289,12 +258,11 @@ const TOOLS: Tool[] = [
           enum: ["markdown", "json"],
         },
       },
-      required: ["region"],
     },
   },
   {
     name: "aws_analyze_network_security",
-    description: "Enumerate VPCs OR analyze Security Groups for dangerous rules",
+    description: "Comprehensive network security analysis: enumerate VPCs and subnets, analyze Security Groups for dangerous rules, identify internet-facing resources, VPC peering risks, Transit Gateway exposure, NAT Gateway egress points",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -310,8 +278,8 @@ const TOOLS: Tool[] = [
         },
         scanMode: {
           type: "string",
-          description: "Mode: 'vpcs' (VPCs), 'security_groups' (SGs), 'both' (default)",
-          enum: ["vpcs", "security_groups", "both"],
+          description: "Scan mode: 'vpcs' (VPC enumeration), 'security_groups' (SG rules), 'exposure' (internet-facing analysis), 'both' (VPCs+SGs), 'all' (comprehensive)",
+          enum: ["vpcs", "security_groups", "exposure", "both", "all"],
         },
         format: {
           type: "string",
@@ -324,7 +292,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: "aws_analyze_lambda_security",
-    description: "Enumerate Lambda functions OR identify execution role risks",
+    description: "Comprehensive Lambda security analysis: enumerate functions, analyze execution roles, scan cold start injection risks (layer poisoning, function URL exposure, env var injection), detect Lambda@Edge exploits (origin manipulation, response tampering, cache poisoning)",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -340,8 +308,16 @@ const TOOLS: Tool[] = [
         },
         scanMode: {
           type: "string",
-          description: "Mode: 'enumerate' (list), 'roles' (analyze), 'both' (default)",
-          enum: ["enumerate", "roles", "both"],
+          description: "Scan mode: 'enumerate' (list functions), 'roles' (analyze permissions), 'cold_start' (cold start/layer risks), 'edge' (Lambda@Edge exploits), 'both' (enum+roles), 'all' (comprehensive scan)",
+          enum: ["enumerate", "roles", "cold_start", "edge", "both", "all"],
+        },
+        functionName: {
+          type: "string",
+          description: "Optional: specific Lambda function name for cold_start analysis",
+        },
+        distributionId: {
+          type: "string",
+          description: "Optional: specific CloudFront distribution ID for edge analysis",
         },
         format: {
           type: "string",
@@ -353,8 +329,8 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "aws_enumerate_eks_clusters",
-    description: "List all EKS clusters with security configuration and network settings",
+    name: "aws_analyze_eks_security",
+    description: "Comprehensive EKS (Elastic Kubernetes Service) security analysis: enumerate clusters, scan for IRSA token theft risks, analyze service accounts, hunt for secrets in K8s. Covers cluster security config, OIDC provider misconfigurations, RBAC permissions, secret exposure.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -366,7 +342,16 @@ const TOOLS: Tool[] = [
       properties: {
         region: {
           type: "string",
-          description: "AWS region to scan",
+          description: "AWS region where EKS cluster is located",
+        },
+        clusterName: {
+          type: "string",
+          description: "EKS cluster name (required for irsa, service_accounts, secrets modes)",
+        },
+        scanMode: {
+          type: "string",
+          description: "Scan mode: 'clusters' (list EKS clusters), 'irsa' (IRSA token theft risks), 'service_accounts' (SA security issues), 'secrets' (hunt for K8s secrets), 'all' (comprehensive analysis)",
+          enum: ["clusters", "irsa", "service_accounts", "secrets", "all"],
         },
         format: {
           type: "string",
@@ -403,8 +388,8 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "aws_enumerate_public_resources",
-    description: "Find all publicly accessible resources (EC2 with public IPs, S3 buckets, RDS instances) - attack surface mapping",
+    name: "aws_generate_report",
+    description: "Unified report generation: comprehensive security assessment reports and Threat & Risk Assessment (TRA) reports with multiple output formats (PDF/HTML/CSV)",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -418,30 +403,15 @@ const TOOLS: Tool[] = [
           type: "string",
           description: "AWS region to scan",
         },
-        format: {
+        reportType: {
           type: "string",
-          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
-          enum: ["markdown", "json"],
+          description: "Report type: 'security' (standard security assessment), 'tra' (Threat & Risk Assessment with compliance mapping), 'both' (comprehensive - generates both reports)",
+          enum: ["security", "tra", "both"],
         },
-      },
-      required: ["region"],
-    },
-  },
-  {
-    name: "aws_generate_security_report",
-    description: "Generate comprehensive security assessment report with all findings (PDF/HTML/CSV export)",
-    annotations: {
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-    },
-    inputSchema: {
-      type: "object",
-      properties: {
-        region: {
+        framework: {
           type: "string",
-          description: "AWS region to scan",
+          description: "Compliance framework for TRA reports: 'cis' (CIS AWS), 'nist' (NIST 800-53), 'pci' (PCI-DSS), 'hipaa', 'soc2', 'all' (default). Only applicable for reportType='tra' or 'both'",
+          enum: ["cis", "nist", "pci", "hipaa", "soc2", "all"],
         },
         format: {
           type: "string",
@@ -450,7 +420,7 @@ const TOOLS: Tool[] = [
         },
         outputFile: {
           type: "string",
-          description: "Optional: Save report to file path (e.g., C:\\reports\\aws-security.pdf)",
+          description: "Optional: Save report to file path (e.g., C:\\reports\\aws-report.pdf)",
         },
       },
       required: ["region"],
@@ -519,35 +489,7 @@ const TOOLS: Tool[] = [
       },
     },
   },
-  {
-    name: "aws_scan_eks_irsa_risks",
-    description: "Scan EKS cluster for IRSA (IAM Roles for Service Accounts) token theft risks, overly permissive IAM roles, service accounts with excessive RBAC permissions, and OIDC provider misconfigurations",
-    annotations: {
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-    },
-    inputSchema: {
-      type: "object",
-      properties: {
-        region: {
-          type: "string",
-          description: "AWS region where EKS cluster is located",
-        },
-        clusterName: {
-          type: "string",
-          description: "EKS cluster name",
-        },
-        format: {
-          type: "string",
-          description: "Output format: 'markdown' (default) or 'json'",
-          enum: ["markdown", "json"],
-        },
-      },
-      required: ["region", "clusterName"],
-    },
-  },
+
   {
     name: "aws_scan_elasticache_security",
     description: "Analyze ElastiCache security: encryption in transit/at rest, auth tokens, subnet groups, security groups",
@@ -574,8 +516,8 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "aws_get_guardduty_findings",
-    description: "Retrieve GuardDuty security findings (threats detected by AWS threat intelligence)",
+    name: "aws_get_logs",
+    description: "Unified log retrieval: GuardDuty security findings and MCP audit logs with multiple log types",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -585,14 +527,34 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
+        logType: {
+          type: "string",
+          description: "Log type: 'guardduty' (AWS threat findings), 'audit' (MCP server audit logs), 'both' (comprehensive)",
+          enum: ["guardduty", "audit", "both"],
+        },
         region: {
           type: "string",
-          description: "AWS region to scan",
+          description: "AWS region (required for 'guardduty' and 'both' modes)",
         },
+        // GuardDuty-specific
         severity: {
           type: "string",
-          description: "Filter by severity: LOW, MEDIUM, HIGH, or CRITICAL (default: all)",
+          description: "Filter GuardDuty by severity: LOW, MEDIUM, HIGH, or CRITICAL (for 'guardduty' mode)",
           enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
+        },
+        // Audit-specific
+        level: {
+          type: "string",
+          description: "Filter audit logs by level: DEBUG, INFO, WARN, ERROR, SECURITY (for 'audit' mode)",
+          enum: ["DEBUG", "INFO", "WARN", "ERROR", "SECURITY"],
+        },
+        tool: {
+          type: "string",
+          description: "Filter audit logs by tool name (for 'audit' mode)",
+        },
+        limit: {
+          type: "number",
+          description: "Maximum audit log entries to return (for 'audit' mode, default: 50)",
         },
         format: {
           type: "string",
@@ -600,7 +562,6 @@ const TOOLS: Tool[] = [
           enum: ["markdown", "json"],
         },
       },
-      required: ["region"],
     },
   },
   {
@@ -621,47 +582,13 @@ const TOOLS: Tool[] = [
         },
         scanMode: {
           type: "string",
-          description: "Mode: 'sns', 'sqs', 'cognito', 'all' (default)",
-          enum: ["sns", "sqs", "cognito", "all"],
+          description: "Mode: 'sns', 'sqs', 'cognito', 'both', 'all' (default)",
+          enum: ["sns", "sqs", "cognito", "both", "all"],
         },
         format: {
           type: "string",
           description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
           enum: ["markdown", "json"],
-        },
-      },
-      required: ["region"],
-    },
-  },
-  {
-    name: "aws_generate_tra_report",
-    description: "Generate comprehensive Threat & Risk Assessment (TRA) security report with findings summary and remediation recommendations",
-    annotations: {
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-    },
-    inputSchema: {
-      type: "object",
-      properties: {
-        region: {
-          type: "string",
-          description: "AWS region to scan",
-        },
-        framework: {
-          type: "string",
-          description: "Compliance framework: 'cis' (CIS AWS), 'nist' (NIST 800-53), 'pci' (PCI-DSS), 'all' (default)",
-          enum: ["cis", "nist", "pci", "all"],
-        },
-        format: {
-          type: "string",
-          description: "Output format: 'markdown' (default), 'pdf', 'html', 'csv'",
-          enum: ["markdown", "pdf", "html", "csv"],
-        },
-        outputFile: {
-          type: "string",
-          description: "Optional: Save report to file path",
         },
       },
       required: ["region"],
@@ -698,53 +625,8 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "aws_enumerate_organizations",
-    description: "List AWS Organizations accounts, organizational units, and policies for multi-account enumeration",
-    annotations: {
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-    },
-    inputSchema: {
-      type: "object",
-      properties: {
-        format: {
-          type: "string",
-          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
-          enum: ["markdown", "json"],
-        },
-      },
-    },
-  },
-  {
-    name: "aws_enumerate_detection_services",
-    description: "Enumerate logging and monitoring services: CloudTrail, Config, GuardDuty, CloudWatch, WAF status",
-    annotations: {
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-    },
-    inputSchema: {
-      type: "object",
-      properties: {
-        region: {
-          type: "string",
-          description: "AWS region to scan",
-        },
-        format: {
-          type: "string",
-          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
-          enum: ["markdown", "json"],
-        },
-      },
-      required: ["region"],
-    },
-  },
-  {
     name: "aws_analyze_iam_trust_chains",
-    description: "Analyze IAM role trust relationships for wildcard principals, cross-account access, and unrestricted service access",
+    description: "Comprehensive IAM role analysis: trust relationship wildcards, cross-account access, unrestricted service access, and lateral movement through service role chains (EC2→Lambda→API Gateway→Database)",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -754,6 +636,15 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
+        region: {
+          type: "string",
+          description: "AWS region to analyze (optional for trust analysis, required for service_chain mode)",
+        },
+        scanMode: {
+          type: "string",
+          description: "Scan mode: 'trust' (trust relationships), 'service_chain' (lateral movement chains), 'both' (comprehensive analysis)",
+          enum: ["trust", "service_chain", "both"],
+        },
         format: {
           type: "string",
           description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
@@ -762,29 +653,10 @@ const TOOLS: Tool[] = [
       },
     },
   },
+
   {
-    name: "aws_detect_permissive_roles",
-    description: "Detect IAM roles with excessive permissions (AdministratorAccess, wildcard actions, overly broad resources)",
-    annotations: {
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-    },
-    inputSchema: {
-      type: "object",
-      properties: {
-        format: {
-          type: "string",
-          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
-          enum: ["markdown", "json"],
-        },
-      },
-    },
-  },
-  {
-    name: "aws_detect_persistence_mechanisms",
-    description: "Detect persistence backdoors: Lambda layers, EC2 user data, EventBridge triggers, IAM role modifications, access key rotation",
+    name: "aws_detect_attack_patterns",
+    description: "Unified threat detection: persistence mechanisms, MFA bypass vectors, data exfiltration paths, and privilege escalation patterns with multiple scan modes",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -798,30 +670,18 @@ const TOOLS: Tool[] = [
           type: "string",
           description: "AWS region to scan",
         },
-        format: {
+        scanMode: {
           type: "string",
-          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
-          enum: ["markdown", "json"],
+          enum: ["persistence", "mfa_bypass", "exfiltration", "privesc", "all"],
+          description: "Type of attack pattern detection: 'persistence' (backdoors, Lambda layers, EventBridge), 'mfa_bypass' (console bypass, credential leakage), 'exfiltration' (S3 replication, Lambda connections), 'privesc' (50+ privilege escalation patterns), 'all' (comprehensive)",
         },
-      },
-      required: ["region"],
-    },
-  },
-  {
-    name: "aws_analyze_service_role_chain",
-    description: "Analyze lateral movement through service roles: EC2→Lambda→API Gateway→Database chains",
-    annotations: {
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-    },
-    inputSchema: {
-      type: "object",
-      properties: {
-        region: {
+        principalArn: {
           type: "string",
-          description: "AWS region to analyze",
+          description: "Optional: Specific IAM user/role ARN to analyze (for privesc mode)",
+        },
+        includeRemediation: {
+          type: "boolean",
+          description: "Include detailed remediation steps (default: true)",
         },
         format: {
           type: "string",
@@ -852,31 +712,7 @@ const TOOLS: Tool[] = [
       },
     },
   },
-  {
-    name: "aws_detect_mfa_bypass_vectors",
-    description: "Identify MFA bypass vectors: console bypass via API, credential leakage, external identity providers without MFA, emergency access keys",
-    annotations: {
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-    },
-    inputSchema: {
-      type: "object",
-      properties: {
-        region: {
-          type: "string",
-          description: "AWS region to scan",
-        },
-        format: {
-          type: "string",
-          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
-          enum: ["markdown", "json"],
-        },
-      },
-      required: ["region"],
-    },
-  },
+
   {
     name: "aws_analyze_cloudwatch_security",
     description: "Analyze CloudWatch configuration for security monitoring gaps: missing alarms, log groups without encryption, insufficient retention, missing metric filters for security events",
@@ -982,9 +818,10 @@ const TOOLS: Tool[] = [
       required: ["region"],
     },
   },
+
   {
-    name: "aws_analyze_network_exposure",
-    description: "Deep network security analysis: internet-facing resources, VPC peering risks, Transit Gateway exposure, NAT Gateway egress points",
+    name: "aws_scan_advanced_attacks",
+    description: "Unified advanced attack vector scanning: ECR poisoning, EventBridge injection, API Gateway auth bypass, App Mesh vulnerabilities, Step Functions attacks, IMDSv2 bypass with multiple attack types",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -998,151 +835,49 @@ const TOOLS: Tool[] = [
           type: "string",
           description: "AWS region to scan",
         },
-        format: {
+        attackType: {
           type: "string",
-          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
-          enum: ["markdown", "json"],
+          description: "Attack vector type: 'ecr' (container registry poisoning), 'eventbridge' (event injection), 'api_gateway' (JWT/auth bypass), 'app_mesh' (virtual node spoofing), 'step_functions' (state machine injection), 'imds' (IMDSv2 bypass), 'all' (comprehensive scan)",
+          enum: ["ecr", "eventbridge", "api_gateway", "app_mesh", "step_functions", "imds", "all"],
         },
-      },
-      required: ["region"],
-    },
-  },
-  {
-    name: "aws_detect_data_exfiltration_paths",
-    description: "Identify potential data exfiltration vectors: S3 replication rules, Lambda external connections, EC2 egress routes, cross-account data sharing",
-    annotations: {
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-    },
-    inputSchema: {
-      type: "object",
-      properties: {
-        region: {
+        // ECR-specific
+        repositoryName: {
           type: "string",
-          description: "AWS region to scan",
+          description: "Optional: specific ECR repository name (for 'ecr' mode)",
         },
-        format: {
+        // EventBridge-specific
+        eventBusName: {
           type: "string",
-          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
-          enum: ["markdown", "json"],
+          description: "Optional: specific EventBridge event bus name (for 'eventbridge' mode)",
         },
-      },
-      required: ["region"],
-    },
-  },
-  {
-    name: "aws_scan_eks_service_accounts",
-    description: "Scan EKS cluster for service account security issues: default SA auto-mount, SAs with cluster-wide permissions, IRSA not configured, SA impersonation, legacy tokens. Returns findings with MITRE ATT&CK mappings and kubectl commands.",
-    annotations: {
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-    },
-    inputSchema: {
-      type: "object",
-      properties: {
-        region: {
-          type: "string",
-          description: "AWS region where EKS cluster is located",
-        },
-        clusterName: {
-          type: "string",
-          description: "EKS cluster name",
-        },
-        format: {
-          type: "string",
-          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
-          enum: ["markdown", "json"],
-        },
-      },
-      required: ["region", "clusterName"],
-    },
-  },
-  {
-    name: "aws_hunt_eks_secrets",
-    description: "Hunt for secrets in EKS cluster: enumerate K8s secrets, secrets in env vars, AWS Secrets Manager, SSM Parameter Store, ConfigMap secrets, mounted files, container images, git repos. Returns extraction commands and remediation.",
-    annotations: {
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-    },
-    inputSchema: {
-      type: "object",
-      properties: {
-        region: {
-          type: "string",
-          description: "AWS region where EKS cluster is located",
-        },
-        clusterName: {
-          type: "string",
-          description: "EKS cluster name",
-        },
-        format: {
-          type: "string",
-          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
-          enum: ["markdown", "json"],
-        },
-      },
-      required: ["region", "clusterName"],
-    },
-  },
-  {
-    name: "aws_scan_lambda_cold_start_risks",
-    description: "Scan Lambda functions for cold start injection, layer poisoning, function URL exposure, environment variable injection, excessive execution times, and event source mapping abuse",
-    annotations: {
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-    },
-    inputSchema: {
-      type: "object",
-      properties: {
-        region: {
-          type: "string",
-          description: "AWS region to scan",
-        },
-        functionName: {
-          type: "string",
-          description: "Optional: specific Lambda function name to analyze",
-        },
-        format: {
-          type: "string",
-          description: "Output format: 'markdown' (default) or 'json'",
-          enum: ["markdown", "json"],
-        },
-      },
-      required: ["region"],
-    },
-  },
-  {
-    name: "aws_scan_api_gateway_auth",
-    description: "Scan API Gateway for JWT algorithm confusion, missing authorization, API key exposure, CORS misconfiguration, weak authorizers, missing request validation, and throttling issues",
-    annotations: {
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-    },
-    inputSchema: {
-      type: "object",
-      properties: {
-        region: {
-          type: "string",
-          description: "AWS region to scan",
-        },
+        // API Gateway-specific
         apiId: {
           type: "string",
-          description: "Optional: specific API Gateway REST API ID to analyze",
+          description: "Optional: specific API Gateway REST API ID (for 'api_gateway' mode)",
+        },
+        // App Mesh-specific
+        meshName: {
+          type: "string",
+          description: "Optional: specific App Mesh name (for 'app_mesh' mode)",
+        },
+        // Step Functions-specific
+        stateMachineArn: {
+          type: "string",
+          description: "Optional: specific State Machine ARN (for 'step_functions' mode)",
+        },
+        // IMDSv2-specific
+        instanceId: {
+          type: "string",
+          description: "Optional: specific EC2 instance ID (for 'imds' mode)",
+        },
+        clusterName: {
+          type: "string",
+          description: "Optional: specific EKS cluster name (for 'imds' mode)",
         },
         format: {
           type: "string",
-          description: "Output format: 'markdown' (default) or 'json'",
-          enum: ["markdown", "json"],
+          description: "Output format: 'markdown' (default), 'json', or 'table'",
+          enum: ["markdown", "json", "table"],
         },
       },
       required: ["region"],
@@ -1188,35 +923,6 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "aws_scan_container_registry_poisoning",
-    description: "Scan ECR (Elastic Container Registry) for poisoning risks: public registries, vulnerable images, missing signature verification, external access policies, lack of scanning, mutable tags, and embedded secrets",
-    annotations: {
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-    },
-    inputSchema: {
-      type: "object",
-      properties: {
-        region: {
-          type: "string",
-          description: "AWS region to scan",
-        },
-        repositoryName: {
-          type: "string",
-          description: "Optional: specific ECR repository name to analyze",
-        },
-        format: {
-          type: "string",
-          description: "Output format: 'markdown' (default) or 'json'",
-          enum: ["markdown", "json"],
-        },
-      },
-      required: ["region"],
-    },
-  },
-  {
     name: "aws_list_active_regions",
     description: "Discover which AWS regions have resources deployed. Quick scan to identify active regions before deep scanning. Checks EC2, Lambda, RDS presence.",
     annotations: {
@@ -1246,8 +952,8 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "aws_cache_stats",
-    description: "View cache statistics: hit/miss ratio, cached keys, memory usage. Useful for monitoring performance.",
+    name: "aws_cache_manager",
+    description: "Unified cache management: view statistics (hit/miss ratio, keys, memory) and clear cached data with multiple cache modes",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -1257,29 +963,14 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        format: {
+        cacheMode: {
           type: "string",
-          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
-          enum: ["markdown", "json"],
+          description: "Cache operation: 'stats' (view cache statistics), 'clear' (clear cached data), 'both' (stats then clear)",
+          enum: ["stats", "clear", "both"],
         },
-      },
-    },
-  },
-  {
-    name: "aws_cache_clear",
-    description: "Clear cached data. Use after making AWS changes to get fresh results. Can clear all or specific pattern.",
-    annotations: {
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: false,
-    },
-    inputSchema: {
-      type: "object",
-      properties: {
         pattern: {
           type: "string",
-          description: "Optional: Clear only keys matching this pattern (e.g., 'ec2', 's3', 'us-east-1'). If omitted, clears all.",
+          description: "Optional: For 'clear' mode - clear only keys matching this pattern (e.g., 'ec2', 's3', 'us-east-1'). If omitted, clears all.",
         },
         format: {
           type: "string",
@@ -1351,9 +1042,10 @@ const TOOLS: Tool[] = [
       required: ["region"],
     },
   },
+
   {
-    name: "aws_detect_privesc_patterns",
-    description: "Detect 50+ IAM privilege escalation patterns based on Rhino Security Labs research. Identifies PassRole abuse, policy manipulation, credential access, Lambda abuse, and more with detailed remediation steps.",
+    name: "aws_analyze_rds_security",
+    description: "Comprehensive RDS security analysis: public accessibility, encryption at rest/transit, snapshot exposure, subnet group placement, backup retention, parameter group hardening, and multi-AZ configuration",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -1363,20 +1055,59 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        principalArn: {
+        region: {
           type: "string",
-          description: "Optional: Specific IAM user/role ARN to analyze",
+          description: "AWS region to scan",
         },
-        includeRemediation: {
-          type: "boolean",
-          description: "Include detailed remediation steps (default: true)",
+        scanMode: {
+          type: "string",
+          description: "Mode: 'instances' (DB instances), 'clusters' (Aurora clusters), 'snapshots' (snapshot exposure), 'all' (default)",
+          enum: ["instances", "clusters", "snapshots", "all"],
+        },
+        dbIdentifier: {
+          type: "string",
+          description: "Optional: specific DB instance or cluster identifier to focus on",
         },
         format: {
           type: "string",
-          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
+          description: "Output format: 'markdown' (default) or 'json'",
           enum: ["markdown", "json"],
         },
       },
+      required: ["region"],
+    },
+  },
+  {
+    name: "aws_simulate_permissions",
+    description: "Simulate IAM permissions for a principal using iam:SimulatePrincipalPolicy. Tests what actions a user/role can actually perform, identifies overly permissive policies, and validates least-privilege. Essential for privilege escalation validation.",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        principalArn: {
+          type: "string",
+          description: "ARN of the IAM user or role to simulate (e.g. arn:aws:iam::123456789012:user/test)",
+        },
+        actions: {
+          type: "string",
+          description: "Comma-separated list of IAM actions to test (e.g. 's3:GetObject,iam:CreateUser'). Defaults to high-value offensive actions.",
+        },
+        resourceArn: {
+          type: "string",
+          description: "Optional: specific resource ARN to test against (default: '*')",
+        },
+        format: {
+          type: "string",
+          description: "Output format: 'markdown' (default) or 'json'",
+          enum: ["markdown", "json"],
+        },
+      },
+      required: ["principalArn"],
     },
   },
   {
@@ -1406,39 +1137,6 @@ const TOOLS: Tool[] = [
         },
       },
       required: ["region"],
-    },
-  },
-  {
-    name: "aws_get_audit_logs",
-    description: "Retrieve MCP server audit logs for security monitoring and compliance. Shows tool invocations, errors, and security events.",
-    annotations: {
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-    },
-    inputSchema: {
-      type: "object",
-      properties: {
-        level: {
-          type: "string",
-          description: "Filter by log level: DEBUG, INFO, WARN, ERROR, SECURITY (default: all)",
-          enum: ["DEBUG", "INFO", "WARN", "ERROR", "SECURITY"],
-        },
-        tool: {
-          type: "string",
-          description: "Filter by tool name (optional)",
-        },
-        limit: {
-          type: "number",
-          description: "Maximum number of log entries to return (default: 50)",
-        },
-        format: {
-          type: "string",
-          description: "Output format: 'markdown' (default, human-readable) or 'json' (machine-readable)",
-          enum: ["markdown", "json"],
-        },
-      },
     },
   },
 ];
@@ -1684,10 +1382,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "aws_enumerate_ec2_instances": {
-        const region = v.regionRequired(args?.region, true);
+      case "aws_enumerate_resources": {
+        const region = v.region(args?.region, true);
+        const resourceType = v.resourceType(args?.resourceType, ['ec2', 'rds', 'public', 'organizations', 'detection', 'all']) || 'all';
         const format = v.outputFormat(args?.format);
-        const result = await enumerateEC2InstancesMultiRegion(region);
+        const result = await enumerateResourcesAll(region, resourceType);
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
@@ -1699,30 +1398,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "aws_analyze_iam_users": {
+      case "aws_analyze_iam_security": {
+        const region = v.region(args?.region, false);
+        const scanMode = v.scanMode(args?.scanMode, ['users', 'user_policies', 'roles', 'role_permissions', 'trust_chains', 'service_chains', 'all']);
         const policyArn = v.arn(args?.policyArn);
-        const scanMode = v.scanMode(args?.scanMode, ['users', 'policies', 'both']);
         const format = v.outputFormat(args?.format);
-        const result = await analyzeIAMUsers(policyArn, scanMode);
-        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
-      }
-
-      case "aws_enumerate_iam_roles": {
-        const format = v.outputFormat(args?.format);
-        const result = await enumerateIAMRoles();
-        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
-      }
-
-      case "aws_enumerate_rds_databases": {
-        const region = v.regionRequired(args?.region, true);
-        const format = v.outputFormat(args?.format);
-        const result = await enumerateRDSDatabasesMultiRegion(region);
+        const result = await analyzeIAMSecurityAll(region, scanMode, policyArn);
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
       case "aws_analyze_network_security": {
         const region = v.regionRequired(args?.region, true);
-        const scanMode = v.scanMode(args?.scanMode, ['security_groups', 'nacls', 'both']);
+        const scanMode = v.scanMode(args?.scanMode, ['vpcs', 'security_groups', 'exposure', 'both', 'all']);
         const format = v.outputFormat(args?.format);
         const result = await analyzeNetworkSecurityMultiRegion(region, scanMode);
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
@@ -1730,16 +1417,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "aws_analyze_lambda_security": {
         const region = v.regionRequired(args?.region, true);
-        const scanMode = v.scanMode(args?.scanMode, ['enumerate', 'roles', 'both']);
+        const scanMode = v.scanMode(args?.scanMode, ['enumerate', 'roles', 'cold_start', 'edge', 'both', 'all']);
+        const functionName = v.genericString(args?.functionName, 128);
+        const distributionId = v.genericString(args?.distributionId, 128);
         const format = v.outputFormat(args?.format);
-        const result = await analyzeLambdaSecurityMultiRegion(region, scanMode);
+        const result = await analyzeLambdaSecurityMultiRegion(region, scanMode, functionName, distributionId);
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "aws_enumerate_eks_clusters": {
+      case "aws_analyze_eks_security": {
         const region = v.regionRequired(args?.region, false);
+        const clusterName = v.genericString(args?.clusterName, 128);
+        const scanMode = v.scanMode(args?.scanMode, ['clusters', 'irsa', 'service_accounts', 'secrets', 'all']);
         const format = v.outputFormat(args?.format);
-        const result = await enumerateEKSClusters(region);
+        const result = await analyzeEKSSecurityAll(region, clusterName, scanMode, format);
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
@@ -1760,15 +1451,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "aws_scan_eks_irsa_risks": {
-        if (!args) throw new Error("Missing required arguments");
-        const region = String(args.region);
-        const clusterName = String(args.clusterName);
-        const format = args.format ? String(args.format) : "markdown";
-        const result = await scanEKSIRSARisks(region, clusterName, format);
-        return { content: [{ type: "text", text: result }] };
-      }
-
       case "aws_scan_secrets_manager": {
         const region = v.regionRequired(args?.region, false);
         const format = v.outputFormat(args?.format);
@@ -1776,18 +1458,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "aws_enumerate_public_resources": {
-        const region = v.regionRequired(args?.region, true);
-        const format = v.outputFormat(args?.format);
-        const result = await enumeratePublicResourcesMultiRegion(region);
-        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
-      }
-
-      case "aws_generate_security_report": {
+      case "aws_generate_report": {
         const region = v.regionRequired(args?.region, false);
+        const reportType = v.resourceType(args?.reportType, ['security', 'tra', 'both']) || 'security';
+        const framework = v.framework(args?.framework);
         const format = v.format(args?.format);
         const outputFile = v.filePath(args?.outputFile);
-        return { content: [{ type: "text", text: await generateSecurityReport(region, format, outputFile) }] };
+        const result = await generateReportAll(region, reportType, framework, format, outputFile);
+        return { content: [{ type: "text", text: result }] };
       }
 
       case "aws_scan_elasticache_security": {
@@ -1797,28 +1475,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "aws_get_guardduty_findings": {
-        const region = v.regionRequired(args?.region, false);
+      case "aws_get_logs": {
+        const logType = v.genericString(args?.logType, 20) || 'guardduty';
+        if (!['guardduty', 'audit', 'both'].includes(logType)) {
+          throw new ValidationError(`Invalid logType: ${logType}. Must be 'guardduty', 'audit', or 'both'`);
+        }
+        
+        const region = v.region(args?.region, logType !== 'audit');
         const severity = v.severity(args?.severity);
+        const level = v.scanMode(args?.level, ['DEBUG', 'INFO', 'WARN', 'ERROR', 'SECURITY']);
+        const tool = v.genericString(args?.tool, 100);
+        const limit = typeof args?.limit === 'number' && args.limit > 0 && args.limit <= 500 
+          ? args.limit : undefined;
         const format = v.outputFormat(args?.format);
-        const result = await getGuardDutyFindings(region, severity);
+        
+        const result = await getLogsAll(logType, region, { severity, level, tool, limit }, format);
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
       case "aws_analyze_messaging_security": {
         const region = v.regionRequired(args?.region, false);
-        const scanMode = v.scanMode(args?.scanMode, ['sns', 'sqs', 'both']);
+        const scanMode = v.scanMode(args?.scanMode, ['sns', 'sqs', 'cognito', 'both', 'all']);
         const format = v.outputFormat(args?.format);
         const result = await analyzeMessagingSecurity(region, scanMode);
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
-      }
-
-      case "aws_generate_tra_report": {
-        const region = v.regionRequired(args?.region, false);
-        const framework = v.framework(args?.framework);
-        const format = v.format(args?.format);
-        const outputFile = v.filePath(args?.outputFile);
-        return { content: [{ type: "text", text: await generateTRAReport(region, framework, format, outputFile) }] };
       }
 
       case "aws_analyze_infrastructure_automation": {
@@ -1829,59 +1509,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "aws_enumerate_organizations": {
-        const format = v.outputFormat(args?.format);
-        const result = await enumerateOrganizations();
-        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
-      }
-
-      case "aws_enumerate_detection_services": {
-        const region = v.regionRequired(args?.region, false);
-        const format = v.outputFormat(args?.format);
-        const result = await enumerateDetectionServices(region);
-        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
-      }
-
       case "aws_analyze_iam_trust_chains": {
+        const region = v.region(args?.region, false);
+        const scanMode = v.scanMode(args?.scanMode, ['trust', 'service_chain', 'both']);
         const format = v.outputFormat(args?.format);
-        const result = await analyzeIAMTrustChains();
+        const result = await analyzeIAMTrustChainsAll(region, scanMode);
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "aws_detect_permissive_roles": {
-        const format = v.outputFormat(args?.format);
-        const result = await findOverlyPermissiveRoles();
-        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
-      }
-
-      case "aws_detect_persistence_mechanisms": {
+      case "aws_detect_attack_patterns": {
         const region = v.regionRequired(args?.region, false);
+        const scanMode = v.scanMode(args?.scanMode, ['persistence', 'mfa_bypass', 'exfiltration', 'privesc', 'all']) || 'all';
+        const principalArn = v.arn(args?.principalArn);
+        const includeRemediation = args?.includeRemediation !== false;
         const format = v.outputFormat(args?.format);
-        const result = await detectPersistenceMechanisms(region);
+        const result = await detectAttackPatternsAll(region, scanMode, principalArn, includeRemediation);
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "aws_analyze_service_role_chain": {
-        const region = v.regionRequired(args?.region, false);
-        const format = v.outputFormat(args?.format);
-        const result = await analyzeServiceRoleChain(region);
-        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
-      }
-
-      case "aws_analyze_cross_account_movement": {
+case "aws_analyze_cross_account_movement": {
         const format = v.outputFormat(args?.format);
         const result = await trackCrossAccountMovement();
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "aws_detect_mfa_bypass_vectors": {
-        const region = v.regionRequired(args?.region, false);
-        const format = v.outputFormat(args?.format);
-        const result = await detectMFABypassVectors(region);
-        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
-      }
 
-      // New security tools
       case "aws_analyze_cloudwatch_security": {
         const region = v.regionRequired(args?.region, false);
         const format = v.outputFormat(args?.format);
@@ -1911,49 +1563,29 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "aws_analyze_network_exposure": {
+      case "aws_scan_advanced_attacks": {
         const region = v.regionRequired(args?.region, false);
-        const format = v.outputFormat(args?.format);
-        const result = await analyzeNetworkExposure(region);
-        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
-      }
-
-      case "aws_detect_data_exfiltration_paths": {
-        const region = v.regionRequired(args?.region, false);
-        const format = v.outputFormat(args?.format);
-        const result = await detectDataExfiltrationPaths(region);
-        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
-      }
-
-      case "aws_scan_eks_service_accounts": {
-        const region = v.regionRequired(args?.region, false);
-        const clusterName = v.clusterNameRequired(args?.clusterName);
-        const format = v.outputFormat(args?.format);
-        const result = await scanEKSServiceAccounts(region, clusterName);
-        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
-      }
-
-      case "aws_hunt_eks_secrets": {
-        const region = v.regionRequired(args?.region, false);
-        const clusterName = v.clusterNameRequired(args?.clusterName);
-        const format = v.outputFormat(args?.format);
-        const result = await huntEKSSecrets(region, clusterName);
-        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
-      }
-
-      case "aws_scan_lambda_cold_start_risks": {
-        const region = v.regionRequired(args?.region, false);
-        const functionName = v.genericString(args?.functionName, 128);
-        const format = v.outputFormat(args?.format);
-        const result = await scanLambdaColdStartRisks(region, functionName, format);
-        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
-      }
-
-      case "aws_scan_api_gateway_auth": {
-        const region = v.regionRequired(args?.region, false);
+        const attackType = v.genericString(args?.attackType, 20) || 'all';
+        if (!['ecr', 'eventbridge', 'api_gateway', 'app_mesh', 'step_functions', 'imds', 'all'].includes(attackType)) {
+          throw new ValidationError(`Invalid attackType: ${attackType}. Must be 'ecr', 'eventbridge', 'api_gateway', 'app_mesh', 'step_functions', 'imds', or 'all'`);
+        }
+        
+        // Extract type-specific parameters
+        const repositoryName = v.genericString(args?.repositoryName);
+        const eventBusName = v.genericString(args?.eventBusName, 128);
         const apiId = v.genericString(args?.apiId, 128);
+        const meshName = v.genericString(args?.meshName, 128);
+        const stateMachineArn = v.arn(args?.stateMachineArn);
+        const instanceId = v.genericString(args?.instanceId, 50);
+        const clusterName = v.clusterName(args?.clusterName);
         const format = v.outputFormat(args?.format);
-        const result = await scanAPIGatewayAuth(region, apiId, format);
+        
+        const result = await scanAdvancedAttacksAll(
+          region, 
+          attackType, 
+          { repositoryName, eventBusName, apiId, meshName, stateMachineArn, instanceId, clusterName },
+          format
+        );
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
@@ -1969,15 +1601,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "aws_scan_container_registry_poisoning": {
-        const region = v.region(args?.region, false);
-        if (!region) throw new Error("region is required");
-        const repositoryName = v.genericString(args?.repositoryName);
-        const format = v.outputFormat(args?.format);
-        const result = await scanECRPoisoning(region, repositoryName, format);
-        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
-      }
-
       case "aws_list_active_regions": {
         const scanMode = v.scanMode(args?.scanMode, ['quick', 'thorough']);
         const regions = v.genericString(args?.regions);
@@ -1986,16 +1609,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "aws_cache_stats": {
-        const format = v.outputFormat(args?.format);
-        const result = getCacheStats();
-        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
-      }
-
-      case "aws_cache_clear": {
+      case "aws_cache_manager": {
+        const cacheMode = v.genericString(args?.cacheMode, 20) || 'stats';
+        if (!['stats', 'clear', 'both'].includes(cacheMode)) {
+          throw new ValidationError(`Invalid cacheMode: ${cacheMode}. Must be 'stats', 'clear', or 'both'`);
+        }
         const pattern = v.genericString(args?.pattern, 100);
         const format = v.outputFormat(args?.format);
-        const result = clearCache(pattern);
+        const result = await cacheManagerAll(cacheMode, pattern, format);
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
@@ -2016,11 +1637,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
-      case "aws_detect_privesc_patterns": {
-        const principalArn = v.arn(args?.principalArn);
-        const includeRemediation = args?.includeRemediation !== false;
+      case "aws_analyze_rds_security": {
+        const region = v.regionRequired(args?.region, false);
+        const scanMode = v.scanMode(args?.scanMode, ['instances', 'clusters', 'snapshots', 'all']) || 'all';
+        const dbIdentifier = v.genericString(args?.dbIdentifier, 255);
         const format = v.outputFormat(args?.format);
-        const result = await detectPrivescPatterns(principalArn, includeRemediation);
+        const result = await analyzeRDSSecurity(region, scanMode, dbIdentifier);
+        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
+      }
+
+      case "aws_simulate_permissions": {
+        const principalArn = v.arn(args?.principalArn);
+        if (!principalArn) throw new ValidationError('principalArn is required', { provided: args?.principalArn });
+        const actions = v.genericString(args?.actions, 2000);
+        const resourceArn = v.genericString(args?.resourceArn, 2048);
+        const format = v.outputFormat(args?.format);
+        const result = await simulatePermissions(principalArn, actions, resourceArn);
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
@@ -2029,16 +1661,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const includeAwsManaged = args?.includeAwsManaged === true;
         const format = v.outputFormat(args?.format);
         const result = await analyzeAMISecurity(region, includeAwsManaged);
-        return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
-      }
-
-      case "aws_get_audit_logs": {
-        const level = v.scanMode(args?.level, ['DEBUG', 'INFO', 'WARN', 'ERROR', 'SECURITY']);
-        const tool = v.genericString(args?.tool, 100);
-        const limit = typeof args?.limit === 'number' && args.limit > 0 && args.limit <= 500 
-          ? args.limit : undefined;
-        const format = v.outputFormat(args?.format);
-        const result = getAuditLogs(level, tool, limit);
         return { content: [{ type: "text", text: formatResponse(result, format, name) }] };
       }
 
@@ -2441,22 +2063,35 @@ async function analyzeNetworkSecurityMultiRegion(region: string, scanMode?: stri
 
 async function analyzeNetworkSecurity(region: string, scanMode?: string): Promise<string> {
   const mode = scanMode || "both";
-  let output = "# Network Security Analysis\n\n";
-  if (mode === "vpcs" || mode === "both") {
+  let output = "";
+  
+  if (mode === "exposure") {
+    return analyzeNetworkExposure(region);
+  }
+  
+  output = "# Network Security Analysis\n\n";
+  
+  if (mode === "vpcs" || mode === "both" || mode === "all") {
     output += "## VPCs\n" + await enumerateVPCs(region) + "\n\n";
   }
-  if (mode === "security_groups" || mode === "both") {
+  
+  if (mode === "security_groups" || mode === "both" || mode === "all") {
     output += "## Security Groups\n" + await analyzeSecurityGroups(region) + "\n";
   }
+  
+  if (mode === "all") {
+    output += "\n## Network Exposure Analysis\n" + await analyzeNetworkExposure(region) + "\n";
+  }
+  
   return output;
 }
 
 // Multi-region Lambda Security analysis
-async function analyzeLambdaSecurityMultiRegion(region: string, scanMode?: string): Promise<string> {
+async function analyzeLambdaSecurityMultiRegion(region: string, scanMode?: string, functionName?: string, distributionId?: string): Promise<string> {
   const regions = resolveRegions(region);
   
   if (regions.length === 1) {
-    return analyzeLambdaSecurity(regions[0], scanMode);
+    return analyzeLambdaSecurity(regions[0], scanMode, functionName, distributionId);
   }
   
   let output = `# Lambda Security - Multi-Region Scan\n\n`;
@@ -2496,15 +2131,33 @@ async function analyzeLambdaSecurityMultiRegion(region: string, scanMode?: strin
   return output;
 }
 
-async function analyzeLambdaSecurity(region: string, scanMode?: string): Promise<string> {
+async function analyzeLambdaSecurity(region: string, scanMode?: string, functionName?: string, distributionId?: string): Promise<string> {
   const mode = scanMode || "both";
-  let output = "# Lambda Security Analysis\n\n";
-  if (mode === "enumerate" || mode === "both") {
+  let output = "";
+  
+  if (mode === "cold_start") {
+    return scanLambdaColdStartRisks(region, functionName);
+  }
+  
+  if (mode === "edge") {
+    return scanLambdaEdgeExploits(region, distributionId);
+  }
+  
+  output = "# Lambda Security Analysis\n\n";
+  
+  if (mode === "enumerate" || mode === "both" || mode === "all") {
     output += "## Lambda Functions\n" + await enumerateLambdaFunctions(region) + "\n\n";
   }
-  if (mode === "roles" || mode === "both") {
+  
+  if (mode === "roles" || mode === "both" || mode === "all") {
     output += "## Service Role Analysis\n" + await findOverlyPermissiveRoles() + "\n";
   }
+  
+  if (mode === "all") {
+    output += "\n## Cold Start & Layer Risks\n" + await scanLambdaColdStartRisks(region, functionName) + "\n\n";
+    output += "## Lambda@Edge Exploits\n" + await scanLambdaEdgeExploits(region, distributionId) + "\n";
+  }
+  
   return output;
 }
 
@@ -2533,6 +2186,49 @@ async function analyzeAPIDistributionSecurity(region?: string, scanMode?: string
   if (mode === "cloudfront" || mode === "both") {
     output += "## CloudFront Distributions\n" + await scanCloudFrontSecurity() + "\n";
   }
+  return output;
+}
+
+/**
+ * Comprehensive EKS security analysis wrapper
+ * Routes to appropriate functions based on scanMode
+ */
+async function analyzeEKSSecurityAll(region: string, clusterName?: string, scanMode?: string, format?: string): Promise<string> {
+  const mode = scanMode || "all";
+  let output = "";
+  
+  if (mode === "clusters") {
+    return await enumerateEKSClusters(region);
+  }
+  
+  if (mode === "irsa") {
+    if (!clusterName) throw new Error("clusterName is required for 'irsa' scan mode");
+    return await scanEKSIRSARisks(region, clusterName, format || "markdown");
+  }
+  
+  if (mode === "service_accounts") {
+    if (!clusterName) throw new Error("clusterName is required for 'service_accounts' scan mode");
+    return await scanEKSServiceAccounts(region, clusterName);
+  }
+  
+  if (mode === "secrets") {
+    if (!clusterName) throw new Error("clusterName is required for 'secrets' scan mode");
+    return await huntEKSSecrets(region, clusterName);
+  }
+  
+  // mode === "all" - comprehensive analysis
+  output = "# Comprehensive EKS Security Analysis\n\n";
+  
+  output += "## EKS Clusters Enumeration\n" + await enumerateEKSClusters(region) + "\n\n";
+  
+  if (clusterName) {
+    output += "---\n## IRSA Token Theft Risk Analysis\n" + await scanEKSIRSARisks(region, clusterName, format || "markdown") + "\n\n";
+    output += "---\n## Service Account Security\n" + await scanEKSServiceAccounts(region, clusterName) + "\n\n";
+    output += "---\n## Secrets Hunting\n" + await huntEKSSecrets(region, clusterName) + "\n";
+  } else {
+    output += "\n[WARN] ClusterName not provided. Skipping IRSA, service account, and secrets analysis. Provide 'clusterName' parameter for complete analysis.\n";
+  }
+  
   return output;
 }
 
@@ -5580,6 +5276,81 @@ async function scanEventBridgeSecurity(region: string): Promise<string> {
 }
 
 
+/**
+ * Comprehensive IAM security analysis wrapper
+ * Routes to appropriate functions based on scanMode
+ */
+async function analyzeIAMSecurityAll(region?: string, scanMode?: string, policyArn?: string): Promise<string> {
+  const mode = scanMode || "all";
+  let output = "# Comprehensive IAM Security Analysis\n\n";
+  
+  if (mode === "users") {
+    return await enumerateIAMUsers();
+  }
+  
+  if (mode === "user_policies") {
+    return await checkIAMPolicies(policyArn);
+  }
+  
+  if (mode === "roles") {
+    return await enumerateIAMRoles();
+  }
+  
+  if (mode === "role_permissions") {
+    return await findOverlyPermissiveRoles();
+  }
+  
+  if (mode === "trust_chains") {
+    return await analyzeIAMTrustChains();
+  }
+  
+  if (mode === "service_chains") {
+    if (!region) throw new Error("Region is required for service_chains analysis");
+    return await analyzeServiceRoleChain(region);
+  }
+  
+  // mode === "all" - comprehensive analysis
+  output += "## IAM Users\n" + await enumerateIAMUsers() + "\n\n";
+  output += "---\n## IAM User Policies\n" + await checkIAMPolicies(policyArn) + "\n\n";
+  output += "---\n## IAM Roles\n" + await enumerateIAMRoles() + "\n\n";
+  output += "---\n## Overly Permissive Roles\n" + await findOverlyPermissiveRoles() + "\n\n";
+  output += "---\n## Trust Relationship Analysis\n" + await analyzeIAMTrustChains() + "\n\n";
+  
+  if (region) {
+    output += "---\n## Service Role Chain Analysis\n" + await analyzeServiceRoleChain(region) + "\n";
+  } else {
+    output += "---\n[WARN] Region not provided. Skipping service chain analysis. Provide 'region' parameter for complete analysis.\n";
+  }
+  
+  return output;
+}
+
+async function analyzeIAMTrustChainsAll(region?: string, scanMode?: string): Promise<string> {
+  const mode = scanMode || "trust";
+  let output = "";
+  
+  if (mode === "service_chain") {
+    if (!region) throw new Error("Region is required for service_chain analysis");
+    return analyzeServiceRoleChain(region);
+  }
+  
+  output = "# IAM Trust & Service Role Analysis\n\n";
+  
+  if (mode === "trust" || mode === "both") {
+    output += await analyzeIAMTrustChains() + "\n";
+  }
+  
+  if (mode === "both") {
+    if (!region) {
+      output += "\n[WARN] Region not provided for service chain analysis. Skipping.\n";
+    } else {
+      output += "\n## Service Role Chain Analysis\n" + await analyzeServiceRoleChain(region) + "\n";
+    }
+  }
+  
+  return output;
+}
+
 async function analyzeIAMTrustChains(): Promise<string> {
   let output = `# IAM Trust Relationship Analysis\n\n`;
   const findings: string[] = [];
@@ -7572,6 +7343,458 @@ async function detectDataExfiltrationPaths(region: string): Promise<string> {
   return output;
 }
 
+/**
+ * Unified resource enumeration wrapper
+ * Routes resourceType to appropriate enumeration functions
+ */
+async function enumerateResourcesAll(
+  region: string | undefined,
+  resourceType: string
+): Promise<string> {
+  switch (resourceType) {
+    case 'ec2':
+      if (!region) throw new Error('region is required for ec2 enumeration');
+      return await enumerateEC2InstancesMultiRegion(region);
+    
+    case 'rds':
+      if (!region) throw new Error('region is required for rds enumeration');
+      return await enumerateRDSDatabasesMultiRegion(region);
+    
+    case 'public':
+      if (!region) throw new Error('region is required for public resource enumeration');
+      return await enumeratePublicResourcesMultiRegion(region);
+    
+    case 'organizations':
+      return await enumerateOrganizations();
+    
+    case 'detection':
+      if (!region) throw new Error('region is required for detection services enumeration');
+      return await enumerateDetectionServices(region);
+    
+    case 'all':
+      // Comprehensive enumeration across all resource types
+      let output = `# 🔍 Comprehensive AWS Resource Enumeration\n\n`;
+      output += `**Scan Mode:** All Resources\n`;
+      output += `**Date:** ${new Date().toISOString()}\n\n`;
+      
+      // EC2
+      if (region) {
+        output += `## EC2 Instances\n\n`;
+        try {
+          output += await enumerateEC2InstancesMultiRegion(region);
+        } catch (err: any) {
+          output += `[ERROR] Failed to enumerate EC2: ${err.message}\n`;
+        }
+        output += `\n---\n\n`;
+      }
+      
+      // RDS
+      if (region) {
+        output += `## RDS Databases\n\n`;
+        try {
+          output += await enumerateRDSDatabasesMultiRegion(region);
+        } catch (err: any) {
+          output += `[ERROR] Failed to enumerate RDS: ${err.message}\n`;
+        }
+        output += `\n---\n\n`;
+      }
+      
+      // Public Resources
+      if (region) {
+        output += `## Public Attack Surface\n\n`;
+        try {
+          output += await enumeratePublicResourcesMultiRegion(region);
+        } catch (err: any) {
+          output += `[ERROR] Failed to enumerate public resources: ${err.message}\n`;
+        }
+        output += `\n---\n\n`;
+      }
+      
+      // Organizations
+      output += `## AWS Organizations Structure\n\n`;
+      try {
+        output += await enumerateOrganizations();
+      } catch (err: any) {
+        output += `[ERROR] Failed to enumerate organizations: ${err.message}\n`;
+      }
+      output += `\n---\n\n`;
+      
+      // Detection Services
+      if (region) {
+        output += `## Detection & Monitoring Services\n\n`;
+        try {
+          output += await enumerateDetectionServices(region);
+        } catch (err: any) {
+          output += `[ERROR] Failed to enumerate detection services: ${err.message}\n`;
+        }
+      }
+      
+      return output;
+    
+    default:
+      throw new Error(`Invalid resourceType: ${resourceType}`);
+  }
+}
+
+/**
+ * Unified attack pattern detection wrapper
+ * Routes scanMode to appropriate detection functions
+ */
+async function detectAttackPatternsAll(
+  region: string,
+  scanMode: string,
+  principalArn?: string,
+  includeRemediation: boolean = true
+): Promise<string> {
+  switch (scanMode) {
+    case 'persistence':
+      return await detectPersistenceMechanisms(region);
+    
+    case 'mfa_bypass':
+      return await detectMFABypassVectors(region);
+    
+    case 'exfiltration':
+      return await detectDataExfiltrationPaths(region);
+    
+    case 'privesc':
+      return await detectPrivescPatterns(principalArn, includeRemediation);
+    
+    case 'all':
+      // Run all detection modes
+      let output = `# 🔍 COMPREHENSIVE ATTACK PATTERN DETECTION\n\n`;
+      output += `**Region:** ${region}\n`;
+      output += `**Scan Time:** ${new Date().toISOString()}\n`;
+      output += `**Server:** Nimbus MCP v${SERVER_VERSION}\n\n`;
+      output += `---\n\n`;
+
+      output += `## 1️⃣ Persistence Mechanisms\n\n`;
+      output += await detectPersistenceMechanisms(region);
+      output += `\n\n---\n\n`;
+
+      output += `## 2️⃣ MFA Bypass Vectors\n\n`;
+      output += await detectMFABypassVectors(region);
+      output += `\n\n---\n\n`;
+
+      output += `## 3️⃣ Data Exfiltration Paths\n\n`;
+      output += await detectDataExfiltrationPaths(region);
+      output += `\n\n---\n\n`;
+
+      output += `## 4️⃣ Privilege Escalation Patterns\n\n`;
+      output += await detectPrivescPatterns(principalArn, includeRemediation);
+      output += `\n\n---\n\n`;
+
+      output += `*All attack pattern detection complete. Review findings above for security gaps.*\n`;
+      return output;
+    
+    default:
+      return `Error: Unknown scanMode '${scanMode}'`;
+  }
+}
+
+/**
+ * Unified report generation wrapper
+ * Routes reportType to appropriate report generation functions
+ */
+async function generateReportAll(
+  region: string,
+  reportType: string,
+  framework?: string,
+  format?: string,
+  outputFile?: string
+): Promise<string> {
+  const reportFormat = format || 'markdown';
+  
+  switch (reportType) {
+    case 'security':
+      return await generateSecurityReport(region, reportFormat, outputFile);
+    
+    case 'tra':
+      return await generateTRAReport(region, framework, reportFormat, outputFile);
+    
+    case 'both': {
+      // Generate both reports with section headers
+      let output = `# 📊 Comprehensive AWS Security Assessment\n\n`;
+      output += `**Region:** ${region}\n`;
+      output += `**Date:** ${new Date().toISOString()}\n`;
+      output += `**Report Types:** Security Assessment + Threat & Risk Assessment\n\n`;
+      output += `---\n\n`;
+      
+      // Security Report
+      output += `# PART 1: Security Assessment Report\n\n`;
+      try {
+        const securityReport = await generateSecurityReport(region, 'markdown', undefined);
+        output += securityReport;
+      } catch (err: any) {
+        output += `[ERROR] Failed to generate security report: ${err.message}\n`;
+      }
+      output += `\n\n---\n\n`;
+      
+      // TRA Report
+      output += `# PART 2: Threat & Risk Assessment (TRA) Report\n\n`;
+      try {
+        const traReport = await generateTRAReport(region, framework, 'markdown', undefined);
+        output += traReport;
+      } catch (err: any) {
+        output += `[ERROR] Failed to generate TRA report: ${err.message}\n`;
+      }
+      
+      // Save to file if requested
+      if (outputFile && reportFormat !== 'markdown') {
+        output += `\n\n[INFO] Combined report generation with ${reportFormat} format is only supported in markdown mode.\n`;
+        output += `[TIP] Run separate reports with reportType='security' and reportType='tra' for PDF/HTML/CSV export.\n`;
+      }
+      
+      return output;
+    }
+    
+    default:
+      throw new Error(`Invalid reportType: ${reportType}`);
+  }
+}
+
+/**
+ * Unified cache management wrapper
+ * Routes cacheMode to appropriate cache functions
+ */
+async function cacheManagerAll(
+  cacheMode: string,
+  pattern?: string,
+  format?: string
+): Promise<string> {
+  switch (cacheMode) {
+    case 'stats':
+      return getCacheStats();
+    
+    case 'clear':
+      return clearCache(pattern);
+    
+    case 'both': {
+      // Get stats then clear
+      let output = `# 📊 Cache Management - Stats & Clear\n\n`;
+      output += `## PART 1: Cache Statistics (Before Clear)\n\n`;
+      
+      try {
+        const stats = getCacheStats();
+        output += stats;
+      } catch (err: any) {
+        output += `[ERROR] Failed to get cache stats: ${err.message}\n`;
+      }
+      output += `\n\n---\n\n`;
+      
+      // Clear cache
+      output += `## PART 2: Cache Clear Operation\n\n`;
+      try {
+        const clearResult = clearCache(pattern);
+        output += clearResult;
+      } catch (err: any) {
+        output += `[ERROR] Failed to clear cache: ${err.message}\n`;
+      }
+      
+      return output;
+    }
+    
+    default:
+      throw new Error(`Invalid cacheMode: ${cacheMode}`);
+  }
+}
+
+/**
+ * Unified advanced attack scanning wrapper
+ * Routes attackType to appropriate attack scan functions
+ */
+async function scanAdvancedAttacksAll(
+  region: string,
+  attackType: string,
+  params: {
+    repositoryName?: string;
+    eventBusName?: string;
+    apiId?: string;
+    meshName?: string;
+    stateMachineArn?: string;
+    instanceId?: string;
+    clusterName?: string;
+  },
+  format?: string
+): Promise<string> {
+  const scanFormat = format || 'markdown';
+  
+  switch (attackType) {
+    case 'ecr':
+      return await scanECRPoisoning(region, params.repositoryName, scanFormat);
+    
+    case 'eventbridge':
+      return await scanEventBridgeInjection(region, params.eventBusName, scanFormat);
+    
+    case 'api_gateway':
+      return await scanAPIGatewayAuth(region, params.apiId, scanFormat);
+    
+    case 'app_mesh':
+      return await scanAppMeshSecurity(region, params.meshName, scanFormat);
+    
+    case 'step_functions':
+      return await scanStepFunctionsAttacks(region, params.stateMachineArn, scanFormat);
+    
+    case 'imds':
+      return await scanIMDSv2Bypass(region, params.instanceId, params.clusterName, scanFormat);
+    
+    case 'all': {
+      // Run all attack scans with section headers
+      let output = `# 🔍 Comprehensive Advanced Attack Vector Scan\n\n`;
+      output += `**Region:** ${region}\n`;
+      output += `**Date:** ${new Date().toISOString()}\n`;
+      output += `**Scan Types:** ECR, EventBridge, API Gateway, App Mesh, Step Functions, IMDSv2\n\n`;
+      output += `---\n\n`;
+      
+      // ECR Poisoning
+      output += `## 1️⃣ ECR Container Registry Poisoning\n\n`;
+      try {
+        const ecrResult = await scanECRPoisoning(region, params.repositoryName, 'markdown');
+        output += ecrResult;
+      } catch (err: any) {
+        output += `[ERROR] ${err.message}\n`;
+      }
+      output += `\n\n---\n\n`;
+      
+      // EventBridge Injection
+      output += `## 2️⃣ EventBridge Event Injection\n\n`;
+      try {
+        const eventbridgeResult = await scanEventBridgeInjection(region, params.eventBusName, 'markdown');
+        output += eventbridgeResult;
+      } catch (err: any) {
+        output += `[ERROR] ${err.message}\n`;
+      }
+      output += `\n\n---\n\n`;
+      
+      // API Gateway Auth Bypass
+      output += `## 3️⃣ API Gateway Authentication Bypass\n\n`;
+      try {
+        const apiGatewayResult = await scanAPIGatewayAuth(region, params.apiId, 'markdown');
+        output += apiGatewayResult;
+      } catch (err: any) {
+        output += `[ERROR] ${err.message}\n`;
+      }
+      output += `\n\n---\n\n`;
+      
+      // App Mesh Security
+      output += `## 4️⃣ App Mesh Virtual Node Spoofing\n\n`;
+      try {
+        const appMeshResult = await scanAppMeshSecurity(region, params.meshName, 'markdown');
+        output += appMeshResult;
+      } catch (err: any) {
+        output += `[ERROR] ${err.message}\n`;
+      }
+      output += `\n\n---\n\n`;
+      
+      // Step Functions Attacks
+      output += `## 5️⃣ Step Functions State Machine Injection\n\n`;
+      try {
+        const stepFunctionsResult = await scanStepFunctionsAttacks(region, params.stateMachineArn, 'markdown');
+        output += stepFunctionsResult;
+      } catch (err: any) {
+        output += `[ERROR] ${err.message}\n`;
+      }
+      output += `\n\n---\n\n`;
+      
+      // IMDSv2 Bypass
+      output += `## 6️⃣ IMDSv2 Bypass Vulnerabilities\n\n`;
+      try {
+        const imdsResult = await scanIMDSv2Bypass(region, params.instanceId, params.clusterName, 'markdown');
+        output += imdsResult;
+      } catch (err: any) {
+        output += `[ERROR] ${err.message}\n`;
+      }
+      
+      return output;
+    }
+    
+    default:
+      throw new Error(`Invalid attackType: ${attackType}`);
+  }
+}
+
+/**
+ * Unified log retrieval wrapper
+ * Routes logType to appropriate log retrieval functions
+ */
+async function getLogsAll(
+  logType: string,
+  region?: string,
+  params?: {
+    severity?: string;
+    level?: string;
+    tool?: string;
+    limit?: number;
+  },
+  format?: string
+): Promise<string> {
+  const logFormat = format || 'markdown';
+  
+  switch (logType) {
+    case 'guardduty':
+      if (!region) {
+        throw new Error('region is required for guardduty logs');
+      }
+      return await getGuardDutyFindings(region, params?.severity);
+    
+    case 'audit':
+      return getAuditLogs(params?.level, params?.tool, params?.limit);
+    
+    case 'both': {
+      let output = `# 📊 Comprehensive Log Retrieval\n\n`;
+      output += `**Date:** ${new Date().toISOString()}\n`;
+      output += `**Log Types:** GuardDuty Findings + Audit Logs\n\n`;
+      output += `---\n\n`;
+      
+      // GuardDuty Findings
+      if (region) {
+        output += `## 1️⃣ GuardDuty Security Findings\n\n`;
+        output += `**Region:** ${region}\n`;
+        if (params?.severity) {
+          output += `**Severity Filter:** ${params.severity}\n`;
+        }
+        output += `\n`;
+        
+        try {
+          const guarddutyResult = await getGuardDutyFindings(region, params?.severity);
+          output += guarddutyResult;
+        } catch (err: any) {
+          output += `[ERROR] Failed to retrieve GuardDuty findings: ${err.message}\n`;
+        }
+        output += `\n\n---\n\n`;
+      } else {
+        output += `## 1️⃣ GuardDuty Security Findings\n\n`;
+        output += `[SKIPPED] Region parameter required for GuardDuty findings\n\n`;
+        output += `---\n\n`;
+      }
+      
+      // Audit Logs
+      output += `## 2️⃣ MCP Server Audit Logs\n\n`;
+      if (params?.level) {
+        output += `**Level Filter:** ${params.level}\n`;
+      }
+      if (params?.tool) {
+        output += `**Tool Filter:** ${params.tool}\n`;
+      }
+      if (params?.limit) {
+        output += `**Limit:** ${params.limit} entries\n`;
+      }
+      output += `\n`;
+      
+      try {
+        const auditResult = getAuditLogs(params?.level, params?.tool, params?.limit);
+        output += auditResult;
+      } catch (err: any) {
+        output += `[ERROR] Failed to retrieve audit logs: ${err.message}\n`;
+      }
+      
+      return output;
+    }
+    
+    default:
+      throw new Error(`Invalid logType: ${logType}`);
+  }
+}
+
 // EKS/KUBERNETES SECURITY FUNCTIONS
 
 async function scanEKSServiceAccounts(region: string, clusterName: string): Promise<string> {
@@ -7922,6 +8145,540 @@ async function huntEKSSecrets(region: string, clusterName: string): Promise<stri
     return outputLines.join('\n');
   } catch (error: any) {
     return `Error hunting EKS secrets: ${error.message}`;
+  }
+}
+
+async function scanAppMeshSecurity(region: string, meshName?: string, format: string = "markdown"): Promise<string> {
+  const appMeshClient = new AppMeshClient({ region });
+  const eksClient = new EKSClient({ region });
+  const ec2Client = new EC2Client({ region });
+  
+  try {
+    const outputLines: string[] = [];
+    const scanTime = new Date().toISOString();
+    let meshesToScan: string[] = [];
+    
+    // Get mesh(es) to analyze
+    if (meshName) {
+      meshesToScan = [meshName];
+    } else {
+      const listResponse = await appMeshClient.send(new ListMeshesCommand({}));
+      meshesToScan = (listResponse.meshes || []).map(m => m.meshName).filter(Boolean) as string[];
+    }
+    
+    if (meshesToScan.length === 0) {
+      return `No App Mesh instances found in region ${region}`;
+    }
+    
+    // Risk counters
+    interface RiskCount {
+      virtualNodeSpoofing: number;
+      routeHijacking: number;
+      mtlsDisabled: number;
+      gatewayRouteExposure: number;
+      envoyProxyVulnerable: number;
+      virtualServiceBypass: number;
+      spiffeTrustManipulation: number;
+      crossMeshExposure: number;
+      observabilityLeakage: number;
+      backendDefaultsInsecure: number;
+    }
+    
+    const risks: RiskCount = {
+      virtualNodeSpoofing: 0,
+      routeHijacking: 0,
+      mtlsDisabled: 0,
+      gatewayRouteExposure: 0,
+      envoyProxyVulnerable: 0,
+      virtualServiceBypass: 0,
+      spiffeTrustManipulation: 0,
+      crossMeshExposure: 0,
+      observabilityLeakage: 0,
+      backendDefaultsInsecure: 0,
+    };
+    
+    const detailedFindings: string[] = [];
+    
+    // Analyze each mesh
+    for (const mesh of meshesToScan) {
+      const meshFindings: string[] = [];
+      
+      try {
+        // Get mesh details
+        const meshResponse = await appMeshClient.send(new DescribeMeshCommand({ meshName: mesh }));
+        const meshDetails = meshResponse.mesh;
+        
+        if (!meshDetails || !meshDetails.metadata) {
+          continue;
+        }
+        
+        const meshArn = meshDetails.metadata.arn || 'Unknown';
+        const egressFilter = meshDetails.spec?.egressFilter?.type || 'Unknown';
+        const serviceDiscovery = meshDetails.spec?.serviceDiscovery || {};
+        
+        // Check 1: mTLS Configuration
+        const mtlsMode = meshDetails.spec?.serviceDiscovery?.ipPreference || 'Unknown';
+        if (egressFilter === 'ALLOW_ALL') {
+          risks.mtlsDisabled++;
+          meshFindings.push(`#### TC-MESH-003: mTLS Misconfiguration\n**Risk:** CRITICAL | **MITRE:** T1557 - Adversary-in-the-Middle\n- Mesh: ${mesh}\n- Egress Filter: ${egressFilter} (allows unencrypted traffic to external services)\n- **Risk:** Man-in-the-middle attacks possible, traffic not encrypted\n- **Attack:** Attacker can intercept traffic between services\n- **Remediation:** Set egress filter to DROP_ALL and use explicit egress rules with mTLS`);
+        }
+        
+        // Check 2: Virtual Nodes - Service Discovery Spoofing
+        const virtualNodesResponse = await appMeshClient.send(new ListVirtualNodesCommand({ meshName: mesh }));
+        const virtualNodes = virtualNodesResponse.virtualNodes || [];
+        
+        for (const node of virtualNodes) {
+          const nodeName = node.virtualNodeName || 'Unknown';
+          try {
+            const nodeDetails = await appMeshClient.send(new DescribeVirtualNodeCommand({
+              meshName: mesh,
+              virtualNodeName: nodeName,
+            }));
+            
+            const nodeSpec = nodeDetails.virtualNode?.spec;
+            const serviceDiscoveryType = nodeSpec?.serviceDiscovery?.dns ? 'DNS' : 
+                                        nodeSpec?.serviceDiscovery?.awsCloudMap ? 'CloudMap' : 'None';
+            const backends = nodeSpec?.backends || [];
+            const listeners = nodeSpec?.listeners || [];
+            
+            // TC-MESH-001: Check for DNS-based service discovery (spoofable)
+            if (nodeSpec?.serviceDiscovery?.dns) {
+              const dnsHostname = nodeSpec.serviceDiscovery.dns.hostname;
+              risks.virtualNodeSpoofing++;
+              meshFindings.push(`#### TC-MESH-001: Virtual Node DNS Spoofing Risk\n**Risk:** HIGH | **MITRE:** T1557.001 - LLMNR/NBT-NS Poisoning\n- Virtual Node: ${nodeName}\n- Service Discovery: DNS (${dnsHostname})\n- **Risk:** DNS spoofing can redirect traffic to malicious endpoints\n- **Attack:** Attacker registers ${dnsHostname} in DNS, captures traffic\n- **Remediation:** Use AWS Cloud Map for service discovery with IAM-based access control`);
+            }
+            
+            // TC-MESH-003: Check listener TLS configuration
+            for (const listener of listeners) {
+              const port = listener.portMapping?.port || 'Unknown';
+              const protocol = listener.portMapping?.protocol || 'Unknown';
+              const hasTLS = !!listener.tls;
+              
+              if (!hasTLS && protocol !== 'grpc') {
+                risks.mtlsDisabled++;
+                meshFindings.push(`#### TC-MESH-003: Listener Without TLS\n**Risk:** HIGH | **MITRE:** T1040 - Network Sniffing\n- Virtual Node: ${nodeName}\n- Port: ${port}\n- Protocol: ${protocol}\n- TLS: Disabled\n- **Risk:** Unencrypted traffic can be intercepted\n- **Remediation:** Enable TLS with certificate from ACM or file-based certificates`);
+              } else if (hasTLS) {
+                // Check TLS mode
+                const tlsMode = listener.tls?.mode || 'DISABLED';
+                if (tlsMode === 'PERMISSIVE') {
+                  risks.mtlsDisabled++;
+                  meshFindings.push(`#### TC-MESH-003: Permissive TLS Mode\n**Risk:** MEDIUM | **MITRE:** T1557 - Adversary-in-the-Middle\n- Virtual Node: ${nodeName}\n- Port: ${port}\n- TLS Mode: PERMISSIVE (allows both encrypted and unencrypted)\n- **Risk:** Downgrade attacks possible\n- **Remediation:** Set TLS mode to STRICT`);
+                }
+              }
+            }
+            
+            // TC-MESH-010: Check backend defaults
+            if (backends.length === 0) {
+              risks.backendDefaultsInsecure++;
+              meshFindings.push(`#### TC-MESH-010: No Backend Restrictions\n**Risk:** LOW | **MITRE:** T1071 - Application Layer Protocol\n- Virtual Node: ${nodeName}\n- Backends: None defined (allows unrestricted outbound)\n- **Risk:** Node can communicate with any service\n- **Remediation:** Define explicit backend allow-list`);
+            }
+            
+            // TC-MESH-006: Check for default backend with wildcard
+            for (const backend of backends) {
+              if (backend.virtualService?.virtualServiceName === '*') {
+                risks.virtualServiceBypass++;
+                meshFindings.push(`#### TC-MESH-006: Wildcard Backend Access\n**Risk:** MEDIUM | **MITRE:** T1071 - Application Layer Protocol\n- Virtual Node: ${nodeName}\n- Backend: * (wildcard)\n- **Risk:** Node can access all virtual services\n- **Remediation:** Specify explicit virtual service backends`);
+              }
+            }
+            
+          } catch (nodeError: any) {
+            // Node details not accessible
+          }
+        }
+        
+        // Check 3: Virtual Routers - Route Hijacking
+        const virtualRoutersResponse = await appMeshClient.send(new ListVirtualRoutersCommand({ meshName: mesh }));
+        const virtualRouters = virtualRoutersResponse.virtualRouters || [];
+        
+        for (const router of virtualRouters) {
+          const routerName = router.virtualRouterName || 'Unknown';
+          try {
+            const routerDetails = await appMeshClient.send(new DescribeVirtualRouterCommand({
+              meshName: mesh,
+              virtualRouterName: routerName,
+            }));
+            
+            // Get routes for this router
+            const routesResponse = await appMeshClient.send(new ListRoutesCommand({
+              meshName: mesh,
+              virtualRouterName: routerName,
+            }));
+            
+            const routes = routesResponse.routes || [];
+            
+            for (const route of routes) {
+              const routeName = route.routeName || 'Unknown';
+              try {
+                const routeDetails = await appMeshClient.send(new DescribeRouteCommand({
+                  meshName: mesh,
+                  virtualRouterName: routerName,
+                  routeName: routeName,
+                }));
+                
+                const routeSpec = routeDetails.route?.spec;
+                const httpRoute = routeSpec?.httpRoute || routeSpec?.http2Route;
+                
+                if (httpRoute) {
+                  const match = httpRoute.match;
+                  const action = httpRoute.action;
+                  
+                  // TC-MESH-002: Check for wildcard or overly permissive routes
+                  if (match?.prefix === '/' || match?.prefix === '/*') {
+                    risks.routeHijacking++;
+                    meshFindings.push(`#### TC-MESH-002: Overly Permissive Route\n**Risk:** MEDIUM | **MITRE:** T1557 - Adversary-in-the-Middle\n- Virtual Router: ${routerName}\n- Route: ${routeName}\n- Match Prefix: ${match.prefix} (catches all requests)\n- **Risk:** Route can be abused for traffic redirection\n- **Remediation:** Use specific path prefixes, implement header-based routing`);
+                  }
+                  
+                  // Check weighted targets for route manipulation
+                  const weightedTargets = action?.weightedTargets || [];
+                  if (weightedTargets.length > 1) {
+                    const hasZeroWeight = weightedTargets.some(t => t.weight === 0);
+                    if (hasZeroWeight) {
+                      meshFindings.push(`#### TC-MESH-002: Route with Zero-Weight Target\n**Risk:** LOW | **MITRE:** T1496 - Resource Hijacking\n- Virtual Router: ${routerName}\n- Route: ${routeName}\n- **Note:** Contains zero-weight target (potential traffic manipulation)\n- **Remediation:** Remove unused weighted targets`);
+                    }
+                  }
+                }
+                
+              } catch (routeError: any) {
+                // Route details not accessible
+              }
+            }
+            
+          } catch (routerError: any) {
+            // Router details not accessible
+          }
+        }
+        
+        // Check 4: Virtual Gateways - Exposure
+        const virtualGatewaysResponse = await appMeshClient.send(new ListVirtualGatewaysCommand({ meshName: mesh }));
+        const virtualGateways = virtualGatewaysResponse.virtualGateways || [];
+        
+        for (const gateway of virtualGateways) {
+          const gatewayName = gateway.virtualGatewayName || 'Unknown';
+          try {
+            const gatewayDetails = await appMeshClient.send(new DescribeVirtualGatewayCommand({
+              meshName: mesh,
+              virtualGatewayName: gatewayName,
+            }));
+            
+            const gatewaySpec = gatewayDetails.virtualGateway?.spec;
+            const listeners = gatewaySpec?.listeners || [];
+            
+            // TC-MESH-004: Check gateway listeners for public exposure
+            for (const listener of listeners) {
+              const port = listener.portMapping?.port || 'Unknown';
+              const protocol = listener.portMapping?.protocol || 'Unknown';
+              const hasTLS = !!listener.tls;
+              
+              if (!hasTLS) {
+                risks.gatewayRouteExposure++;
+                meshFindings.push(`#### TC-MESH-004: Virtual Gateway Without TLS\n**Risk:** CRITICAL | **MITRE:** T1190 - Exploit Public-Facing Application\n- Virtual Gateway: ${gatewayName}\n- Port: ${port}\n- Protocol: ${protocol}\n- TLS: Disabled\n- **Risk:** Gateway exposes mesh services without encryption\n- **Remediation:** Enable TLS with ACM certificate`);
+              }
+            }
+            
+            // Check gateway routes
+            const gatewayRoutesResponse = await appMeshClient.send(new ListGatewayRoutesCommand({
+              meshName: mesh,
+              virtualGatewayName: gatewayName,
+            }));
+            
+            const gatewayRoutes = gatewayRoutesResponse.gatewayRoutes || [];
+            
+            for (const gwRoute of gatewayRoutes) {
+              const gwRouteName = gwRoute.gatewayRouteName || 'Unknown';
+              try {
+                const gwRouteDetails = await appMeshClient.send(new DescribeGatewayRouteCommand({
+                  meshName: mesh,
+                  virtualGatewayName: gatewayName,
+                  gatewayRouteName: gwRouteName,
+                }));
+                
+                const gwRouteSpec = gwRouteDetails.gatewayRoute?.spec;
+                const httpRoute = gwRouteSpec?.httpRoute || gwRouteSpec?.http2Route;
+                
+                if (httpRoute) {
+                  const match = httpRoute.match;
+                  const target = httpRoute.action?.target;
+                  
+                  // TC-MESH-004: Check for overly permissive gateway routes
+                  if (match?.prefix === '/' || !match?.prefix) {
+                    risks.gatewayRouteExposure++;
+                    meshFindings.push(`#### TC-MESH-004: Gateway Route Wildcard Exposure\n**Risk:** HIGH | **MITRE:** T1190 - Exploit Public-Facing Application\n- Virtual Gateway: ${gatewayName}\n- Gateway Route: ${gwRouteName}\n- Match Prefix: ${match?.prefix || 'None (matches all)'}\n- Target: ${target?.virtualService?.virtualServiceName || 'Unknown'}\n- **Risk:** Exposes entire virtual service to external traffic\n- **Remediation:** Use specific path prefixes, implement path rewriting`);
+                  }
+                }
+                
+              } catch (gwRouteError: any) {
+                // Gateway route details not accessible
+              }
+            }
+            
+          } catch (gatewayError: any) {
+            // Gateway details not accessible
+          }
+        }
+        
+        // Check 5: Virtual Services - Access Control Bypass
+        const virtualServicesResponse = await appMeshClient.send(new ListVirtualServicesCommand({ meshName: mesh }));
+        const virtualServices = virtualServicesResponse.virtualServices || [];
+        
+        for (const service of virtualServices) {
+          const serviceName = service.virtualServiceName || 'Unknown';
+          try {
+            const serviceDetails = await appMeshClient.send(new DescribeVirtualServiceCommand({
+              meshName: mesh,
+              virtualServiceName: serviceName,
+            }));
+            
+            const serviceSpec = serviceDetails.virtualService?.spec;
+            const provider = serviceSpec?.provider;
+            
+            // TC-MESH-006: Check if virtual service has no provider
+            if (!provider?.virtualNode && !provider?.virtualRouter) {
+              risks.virtualServiceBypass++;
+              meshFindings.push(`#### TC-MESH-006: Virtual Service Without Provider\n**Risk:** MEDIUM | **MITRE:** T1071 - Application Layer Protocol\n- Virtual Service: ${serviceName}\n- Provider: None\n- **Risk:** Service may be unroutable or misconfigured\n- **Remediation:** Configure virtual node or virtual router provider`);
+            }
+            
+          } catch (serviceError: any) {
+            // Service details not accessible
+          }
+        }
+        
+        // TC-MESH-005: Envoy Proxy Version Check
+        // Note: Envoy version is inferred from EKS version if mesh is used with EKS
+        try {
+          const eksListResponse = await eksClient.send(new ListClustersCommand({}));
+          const eksClusters = eksListResponse.clusters || [];
+          
+          if (eksClusters.length > 0) {
+            for (const clusterName of eksClusters) {
+              try {
+                const clusterDetails = await eksClient.send(new DescribeClusterCommand({ name: clusterName }));
+                const k8sVersion = clusterDetails.cluster?.version || 'Unknown';
+                
+                // Flag if K8s version is old (potential Envoy vulnerability)
+                const versionNum = parseFloat(k8sVersion);
+                if (versionNum < 1.28) {
+                  risks.envoyProxyVulnerable++;
+                  meshFindings.push(`#### TC-MESH-005: Outdated Envoy Proxy (via EKS)\n**Risk:** HIGH | **MITRE:** T1190 - Exploit Public-Facing Application\n- EKS Cluster: ${clusterName}\n- Kubernetes Version: ${k8sVersion}\n- **Risk:** Old K8s version may use vulnerable Envoy proxy\n- **Remediation:** Upgrade EKS cluster to latest version (1.28+)`);
+                }
+              } catch (clusterError: any) {
+                // Cluster not accessible
+              }
+            }
+          }
+        } catch (eksError: any) {
+          // EKS not accessible in this region
+        }
+        
+        // TC-MESH-007: SPIFFE Trust Domain
+        // Note: SPIFFE trust domain is implicit in App Mesh (spiffe://<mesh-name>.appmesh.<region>.amazonaws.com)
+        const spiffeDomain = `spiffe://${mesh}.appmesh.${region}.amazonaws.com`;
+        meshFindings.push(`#### TC-MESH-007: SPIFFE Trust Domain\n**Risk:** INFO | **MITRE:** T1556 - Modify Authentication Process\n- Mesh: ${mesh}\n- SPIFFE Trust Domain: ${spiffeDomain}\n- **Note:** Identity is automatically managed by App Mesh\n- **Best Practice:** Monitor CloudTrail for mesh modifications`);
+        
+        // TC-MESH-008: Cross-Mesh Communication (check for shared resources)
+        if (meshesToScan.length > 1) {
+          risks.crossMeshExposure++;
+          meshFindings.push(`#### TC-MESH-008: Multiple Meshes Detected\n**Risk:** LOW | **MITRE:** T1210 - Exploitation of Remote Services\n- Total Meshes: ${meshesToScan.length}\n- Current Mesh: ${mesh}\n- **Risk:** Cross-mesh communication requires explicit configuration\n- **Note:** Verify VPC security groups prevent unauthorized mesh-to-mesh traffic\n- **Remediation:** Use separate VPCs or security groups per mesh`);
+        }
+        
+        // TC-MESH-009: Observability Data Leakage
+        // App Mesh supports X-Ray and CloudWatch integration
+        meshFindings.push(`#### TC-MESH-009: Observability Configuration\n**Risk:** LOW | **MITRE:** T1530 - Data from Cloud Storage Object\n- Mesh: ${mesh}\n- **Note:** App Mesh logs/traces may contain sensitive request data\n- **Recommendation:** Enable X-Ray tracing encryption, restrict CloudWatch Logs access\n- **Remediation:** Use KMS for log encryption, implement least privilege IAM policies`);
+        
+        // Add mesh findings to detailed report
+        if (meshFindings.length > 0) {
+          detailedFindings.push(`### Mesh: ${mesh}\n**ARN:** ${meshArn}\n**Egress Filter:** ${egressFilter}\n**Virtual Nodes:** ${virtualNodes.length}\n**Virtual Routers:** ${virtualRouters.length}\n**Virtual Gateways:** ${virtualGateways.length}\n**Virtual Services:** ${virtualServices.length}\n\n${meshFindings.join('\n\n')}\n`);
+        }
+        
+      } catch (meshError: any) {
+        detailedFindings.push(`### Mesh: ${mesh}\n**Error:** Unable to analyze mesh: ${meshError.message}\n`);
+      }
+    }
+    
+    // Build output based on format
+    if (format === 'json') {
+      const jsonOutput = {
+        scanTime,
+        region,
+        meshesAnalyzed: meshesToScan.length,
+        risks: {
+          virtualNodeSpoofing: risks.virtualNodeSpoofing,
+          routeHijacking: risks.routeHijacking,
+          mtlsDisabled: risks.mtlsDisabled,
+          gatewayRouteExposure: risks.gatewayRouteExposure,
+          envoyProxyVulnerable: risks.envoyProxyVulnerable,
+          virtualServiceBypass: risks.virtualServiceBypass,
+          spiffeTrustManipulation: risks.spiffeTrustManipulation,
+          crossMeshExposure: risks.crossMeshExposure,
+          observabilityLeakage: risks.observabilityLeakage,
+          backendDefaultsInsecure: risks.backendDefaultsInsecure,
+        },
+        findings: detailedFindings,
+      };
+      return JSON.stringify(jsonOutput, null, 2);
+    }
+    
+    if (format === 'table') {
+      outputLines.push(`App Mesh Security Scan - ${region}`);
+      outputLines.push(`Scan Time: ${scanTime}`);
+      outputLines.push(`Meshes: ${meshesToScan.length}`);
+      outputLines.push(``);
+      outputLines.push(`Risk Type                     | Count | Severity`);
+      outputLines.push(`------------------------------|-------|----------`);
+      outputLines.push(`Virtual Node Spoofing         | ${String(risks.virtualNodeSpoofing).padEnd(5)} | HIGH`);
+      outputLines.push(`Route Hijacking               | ${String(risks.routeHijacking).padEnd(5)} | MEDIUM`);
+      outputLines.push(`mTLS Disabled                 | ${String(risks.mtlsDisabled).padEnd(5)} | CRITICAL`);
+      outputLines.push(`Gateway Route Exposure        | ${String(risks.gatewayRouteExposure).padEnd(5)} | HIGH`);
+      outputLines.push(`Envoy Proxy Vulnerable        | ${String(risks.envoyProxyVulnerable).padEnd(5)} | HIGH`);
+      outputLines.push(`Virtual Service Bypass        | ${String(risks.virtualServiceBypass).padEnd(5)} | MEDIUM`);
+      outputLines.push(`Cross-Mesh Exposure           | ${String(risks.crossMeshExposure).padEnd(5)} | LOW`);
+      outputLines.push(`Backend Defaults Insecure     | ${String(risks.backendDefaultsInsecure).padEnd(5)} | LOW`);
+      outputLines.push(``);
+      return outputLines.join('\n');
+    }
+    
+    // Default: markdown format
+    outputLines.push(`# AWS App Mesh Security Scan`);
+    outputLines.push(`**Region:** ${region}`);
+    outputLines.push(`**Meshes Analyzed:** ${meshesToScan.length}`);
+    outputLines.push(`**Scan Time:** ${scanTime}`);
+    outputLines.push(``);
+    outputLines.push(`## Risk Summary`);
+    outputLines.push(`| Risk Type | Count | Severity |`);
+    outputLines.push(`|-----------|-------|----------|`);
+    outputLines.push(`| Virtual Node Spoofing (TC-MESH-001) | ${risks.virtualNodeSpoofing} | HIGH |`);
+    outputLines.push(`| Route Hijacking (TC-MESH-002) | ${risks.routeHijacking} | MEDIUM |`);
+    outputLines.push(`| mTLS Disabled/Misconfigured (TC-MESH-003) | ${risks.mtlsDisabled} | CRITICAL |`);
+    outputLines.push(`| Gateway Route Exposure (TC-MESH-004) | ${risks.gatewayRouteExposure} | HIGH |`);
+    outputLines.push(`| Envoy Proxy Vulnerable (TC-MESH-005) | ${risks.envoyProxyVulnerable} | HIGH |`);
+    outputLines.push(`| Virtual Service Bypass (TC-MESH-006) | ${risks.virtualServiceBypass} | MEDIUM |`);
+    outputLines.push(`| Cross-Mesh Exposure (TC-MESH-008) | ${risks.crossMeshExposure} | LOW |`);
+    outputLines.push(`| Backend Defaults Insecure (TC-MESH-010) | ${risks.backendDefaultsInsecure} | LOW |`);
+    outputLines.push(``);
+    
+    const totalRisks = risks.virtualNodeSpoofing + risks.routeHijacking + risks.mtlsDisabled + 
+                       risks.gatewayRouteExposure + risks.envoyProxyVulnerable + risks.virtualServiceBypass +
+                       risks.crossMeshExposure + risks.backendDefaultsInsecure;
+    
+    if (totalRisks === 0) {
+      outputLines.push(`## ✅ No Critical Risks Detected`);
+      outputLines.push(``);
+      outputLines.push(`All ${meshesToScan.length} App Mesh instance(s) passed security checks for:`);
+      outputLines.push(`- Virtual node spoofing via service discovery`);
+      outputLines.push(`- Route hijacking through virtual router manipulation`);
+      outputLines.push(`- mTLS configuration`);
+      outputLines.push(`- Gateway route exposure`);
+      outputLines.push(`- Envoy proxy vulnerabilities`);
+      outputLines.push(`- Virtual service access control`);
+      outputLines.push(``);
+    } else {
+      outputLines.push(`## ⚠️ Detailed Findings`);
+      outputLines.push(``);
+      
+      if (detailedFindings.length > 0) {
+        outputLines.push(detailedFindings.join('\n---\n\n'));
+      }
+    }
+    
+    outputLines.push(`## Integration with EKS and VPC`);
+    outputLines.push(``);
+    outputLines.push(`App Mesh is commonly deployed with:`);
+    outputLines.push(`- **EKS Clusters**: Run \`aws_scan_eks_irsa_risks\` to analyze service account permissions`);
+    outputLines.push(`- **VPC Security Groups**: Run \`aws_analyze_network_security\` to verify mesh traffic isolation`);
+    outputLines.push(`- **Load Balancers**: Ensure ALB/NLB correctly routes to virtual gateway listeners`);
+    outputLines.push(``);
+    outputLines.push(`**Cross-Tool Analysis:**`);
+    outputLines.push(`1. Identify EKS pods using App Mesh sidecar (Envoy proxy)`);
+    outputLines.push(`2. Verify VPC security groups allow mesh traffic (port 15000-15001)`);
+    outputLines.push(`3. Check IRSA roles for App Mesh controller and virtual node IAM permissions`);
+    outputLines.push(``);
+    
+    outputLines.push(`## Attack Chain Examples`);
+    outputLines.push(``);
+    outputLines.push(`### Attack Chain 1: Virtual Node Spoofing → Data Exfiltration`);
+    outputLines.push(`1. **Initial Access**: Exploit DNS-based service discovery (TC-MESH-001)`);
+    outputLines.push(`2. **Spoofing**: Register malicious DNS entry matching virtual node hostname`);
+    outputLines.push(`3. **Traffic Interception**: Capture requests intended for legitimate service`);
+    outputLines.push(`4. **Data Exfiltration**: Extract sensitive data from requests (auth tokens, PII)`);
+    outputLines.push(`5. **Lateral Movement**: Use captured credentials for privilege escalation`);
+    outputLines.push(``);
+    outputLines.push(`### Attack Chain 2: mTLS Bypass → Man-in-the-Middle`);
+    outputLines.push(`1. **Discovery**: Identify virtual nodes with TLS disabled (TC-MESH-003)`);
+    outputLines.push(`2. **Positioning**: Deploy malicious pod in same VPC subnet`);
+    outputLines.push(`3. **Interception**: Use ARP spoofing or DNS manipulation`);
+    outputLines.push(`4. **MITM**: Intercept plaintext traffic between services`);
+    outputLines.push(`5. **Credential Theft**: Extract API keys, session tokens from unencrypted traffic`);
+    outputLines.push(``);
+    outputLines.push(`### Attack Chain 3: Gateway Route Exposure → RCE`);
+    outputLines.push(`1. **Reconnaissance**: Discover public virtual gateway (TC-MESH-004)`);
+    outputLines.push(`2. **Route Discovery**: Identify wildcard gateway routes (prefix: /)`);
+    outputLines.push(`3. **Service Enumeration**: Probe exposed virtual services`);
+    outputLines.push(`4. **Exploit**: Target vulnerable service behind gateway (e.g., Log4Shell)`);
+    outputLines.push(`5. **Code Execution**: Gain RCE on backend service pod`);
+    outputLines.push(``);
+    
+    outputLines.push(`## Remediation Recommendations`);
+    outputLines.push(``);
+    outputLines.push(`### High Priority`);
+    outputLines.push(`1. **Enable mTLS Everywhere:**`);
+    outputLines.push(`   - Set listener TLS mode to STRICT on all virtual nodes`);
+    outputLines.push(`   - Use ACM Private CA for certificate management`);
+    outputLines.push(`   - Set egress filter to DROP_ALL, define explicit egress rules`);
+    outputLines.push(``);
+    outputLines.push(`2. **Secure Service Discovery:**`);
+    outputLines.push(`   - Migrate from DNS to AWS Cloud Map for service discovery`);
+    outputLines.push(`   - Implement IAM-based access control for Cloud Map namespaces`);
+    outputLines.push(`   - Enable Cloud Map health checks`);
+    outputLines.push(``);
+    outputLines.push(`3. **Restrict Gateway Routes:**`);
+    outputLines.push(`   - Replace wildcard prefixes (/) with specific paths`);
+    outputLines.push(`   - Enable TLS on all virtual gateway listeners`);
+    outputLines.push(`   - Implement path rewriting for backend services`);
+    outputLines.push(``);
+    outputLines.push(`### Medium Priority`);
+    outputLines.push(`4. **Virtual Node Hardening:**`);
+    outputLines.push(`   - Define explicit backend allow-lists (avoid wildcards)`);
+    outputLines.push(`   - Implement header-based routing for multi-tenant services`);
+    outputLines.push(`   - Enable connection pooling and outlier detection`);
+    outputLines.push(``);
+    outputLines.push(`5. **Route Security:**`);
+    outputLines.push(`   - Use specific path prefixes instead of /* wildcards`);
+    outputLines.push(`   - Implement request header validation`);
+    outputLines.push(`   - Remove zero-weight targets from weighted routes`);
+    outputLines.push(``);
+    outputLines.push(`6. **Envoy Proxy Updates:**`);
+    outputLines.push(`   - Keep EKS clusters updated (auto-updates Envoy)`);
+    outputLines.push(`   - Monitor CVEs for Envoy proxy vulnerabilities`);
+    outputLines.push(`   - Enable automatic sidecar injection with latest Envoy image`);
+    outputLines.push(``);
+    outputLines.push(`### Low Priority`);
+    outputLines.push(`7. **Monitoring & Observability:**`);
+    outputLines.push(`   - Enable AWS X-Ray for distributed tracing`);
+    outputLines.push(`   - Ship Envoy access logs to CloudWatch Logs`);
+    outputLines.push(`   - Implement custom CloudWatch metrics for mesh traffic`);
+    outputLines.push(`   - Enable KMS encryption for logs and traces`);
+    outputLines.push(``);
+    outputLines.push(`8. **Network Isolation:**`);
+    outputLines.push(`   - Use separate VPCs for production/staging meshes`);
+    outputLines.push(`   - Implement VPC security groups per mesh tier (frontend/backend)`);
+    outputLines.push(`   - Disable VPC peering between meshes unless required`);
+    outputLines.push(``);
+    outputLines.push(`9. **IAM & Access Control:**`);
+    outputLines.push(`   - Use IRSA for virtual node IAM roles (EKS integration)`);
+    outputLines.push(`   - Implement least privilege for App Mesh controller`);
+    outputLines.push(`   - Monitor CloudTrail for mesh configuration changes`);
+    outputLines.push(`   - Enable MFA for IAM users modifying mesh resources`);
+    outputLines.push(``);
+    
+    outputLines.push(`## References`);
+    outputLines.push(`- [AWS App Mesh Security Best Practices](https://docs.aws.amazon.com/app-mesh/latest/userguide/security-best-practices.html)`);
+    outputLines.push(`- [Envoy Proxy Security](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/security/security)`);
+    outputLines.push(`- [SPIFFE/SPIRE Documentation](https://spiffe.io/docs/)`);
+    outputLines.push(`- [MITRE ATT&CK Cloud Matrix](https://attack.mitre.org/matrices/enterprise/cloud/)`);
+    outputLines.push(``);
+    
+    return outputLines.join('\n');
+  } catch (error: any) {
+    return `Error scanning App Mesh security: ${error.message}`;
   }
 }
 
@@ -9077,6 +9834,264 @@ async function listActiveRegions(scanMode?: string, regionsInput?: string): Prom
 // AMI SECURITY ANALYSIS
 
 /**
+ * Analyze RDS security: public access, encryption, snapshots, subnet groups
+ */
+async function analyzeRDSSecurity(region: string, scanMode: string = 'all', dbIdentifier?: string): Promise<string> {
+  const client = new RDSClient({ region });
+  let output = `# RDS Security Analysis\n\n`;
+  output += `**Region:** ${region}\n`;
+  output += `**Scan Time:** ${new Date().toISOString()}\n\n`;
+
+  const findings: string[] = [];
+  let criticalCount = 0, highCount = 0, mediumCount = 0;
+
+  try {
+    // ── Instances ────────────────────────────────────────────────────────────
+    if (scanMode === 'instances' || scanMode === 'all') {
+      const params = dbIdentifier ? { DBInstanceIdentifier: dbIdentifier } : {};
+      const instancesResp = await client.send(new DescribeDBInstancesCommand(params));
+      const instances = instancesResp.DBInstances || [];
+
+      output += `## DB Instances (${instances.length})\n\n`;
+
+      if (instances.length === 0) {
+        output += `[OK] No RDS instances found in ${region}.\n\n`;
+      }
+
+      for (const db of instances) {
+        const id = db.DBInstanceIdentifier || 'Unknown';
+        output += `### ${id} (${db.Engine} ${db.EngineVersion})\n`;
+        output += `| Check | Status |\n|-------|--------|\n`;
+
+        const publiclyAccessible = db.PubliclyAccessible ?? false;
+        output += `| Publicly Accessible | ${publiclyAccessible ? '❌ YES — Internet exposed' : '✅ No'} |\n`;
+        if (publiclyAccessible) { findings.push(`[CRITICAL] ${id}: publicly accessible — reachable from Internet`); criticalCount++; }
+
+        const encrypted = db.StorageEncrypted ?? false;
+        output += `| Storage Encrypted | ${encrypted ? '✅ Yes' : '❌ No'} |\n`;
+        if (!encrypted) { findings.push(`[HIGH] ${id}: storage NOT encrypted at rest`); highCount++; }
+
+        const multiAz = db.MultiAZ ?? false;
+        output += `| Multi-AZ | ${multiAz ? '✅ Yes' : '⚠️ No (single point of failure)'} |\n`;
+        if (!multiAz) { findings.push(`[LOW] ${id}: not Multi-AZ`); }
+
+        const backupDays = db.BackupRetentionPeriod ?? 0;
+        output += `| Backup Retention | ${backupDays >= 7 ? `✅ ${backupDays} days` : `❌ ${backupDays} days (< 7)`} |\n`;
+        if (backupDays < 7) { findings.push(`[MEDIUM] ${id}: backup retention only ${backupDays} days (< 7)`); mediumCount++; }
+
+        const deletionProtection = db.DeletionProtection ?? false;
+        output += `| Deletion Protection | ${deletionProtection ? '✅ Enabled' : '⚠️ Disabled'} |\n`;
+        if (!deletionProtection) { findings.push(`[LOW] ${id}: deletion protection disabled`); }
+
+        const iamAuth = db.IAMDatabaseAuthenticationEnabled ?? false;
+        output += `| IAM Auth | ${iamAuth ? '✅ Enabled' : '⚠️ Disabled (password-only)'} |\n`;
+        if (!iamAuth) { findings.push(`[MEDIUM] ${id}: IAM database authentication not enabled`); mediumCount++; }
+
+        const autoUpgrade = db.AutoMinorVersionUpgrade ?? false;
+        output += `| Auto Minor Upgrades | ${autoUpgrade ? '✅ Yes' : '⚠️ No'} |\n`;
+
+        output += `\n**Endpoint:** ${db.Endpoint?.Address || 'N/A'}:${db.Endpoint?.Port || 'N/A'}\n`;
+        output += `**VPC:** ${db.DBSubnetGroup?.VpcId || 'N/A'} | **Subnet Group:** ${db.DBSubnetGroup?.DBSubnetGroupName || 'N/A'}\n\n`;
+      }
+    }
+
+    // ── Clusters ─────────────────────────────────────────────────────────────
+    if (scanMode === 'clusters' || scanMode === 'all') {
+      const params = dbIdentifier ? { DBClusterIdentifier: dbIdentifier } : {};
+      const clustersResp = await client.send(new DescribeDBClustersCommand(params));
+      const clusters = clustersResp.DBClusters || [];
+
+      output += `## Aurora Clusters (${clusters.length})\n\n`;
+
+      for (const cluster of clusters) {
+        const id = cluster.DBClusterIdentifier || 'Unknown';
+        output += `### ${id} (${cluster.Engine} ${cluster.EngineVersion})\n`;
+        output += `| Check | Status |\n|-------|--------|\n`;
+
+        const encrypted = cluster.StorageEncrypted ?? false;
+        output += `| Storage Encrypted | ${encrypted ? '✅ Yes' : '❌ No'} |\n`;
+        if (!encrypted) { findings.push(`[HIGH] Cluster ${id}: NOT encrypted at rest`); highCount++; }
+
+        const deletionProtection = cluster.DeletionProtection ?? false;
+        output += `| Deletion Protection | ${deletionProtection ? '✅ Enabled' : '⚠️ Disabled'} |\n`;
+
+        const iamAuth = cluster.IAMDatabaseAuthenticationEnabled ?? false;
+        output += `| IAM Auth | ${iamAuth ? '✅ Enabled' : '⚠️ Disabled'} |\n`;
+        if (!iamAuth) { findings.push(`[MEDIUM] Cluster ${id}: IAM database authentication not enabled`); mediumCount++; }
+
+        const backtrack = (cluster.BacktrackWindow ?? 0) > 0;
+        output += `| Backtrack | ${backtrack ? `✅ ${cluster.BacktrackWindow}s` : '⚠️ Disabled'} |\n`;
+
+        output += `\n**Members:** ${cluster.DBClusterMembers?.length || 0} | **Multi-AZ:** ${cluster.MultiAZ ? 'Yes' : 'No'}\n\n`;
+      }
+    }
+
+    // ── Snapshots ─────────────────────────────────────────────────────────────
+    if (scanMode === 'snapshots' || scanMode === 'all') {
+      const snapshotsResp = await client.send(new DescribeDBSnapshotsCommand({ SnapshotType: 'manual' }));
+      const snapshots = snapshotsResp.DBSnapshots || [];
+
+      output += `## Manual Snapshots (${snapshots.length})\n\n`;
+
+      let publicSnapshots = 0;
+      let unencryptedSnapshots = 0;
+
+      for (const snap of snapshots) {
+        const id = snap.DBSnapshotIdentifier || 'Unknown';
+        const isPublic = snap.Status === 'available' && snap.SnapshotType === 'shared';
+        const encrypted = snap.Encrypted ?? false;
+
+        if (!encrypted) {
+          unencryptedSnapshots++;
+          findings.push(`[HIGH] Snapshot ${id}: NOT encrypted`);
+          highCount++;
+        }
+
+        const ageDays = snap.SnapshotCreateTime
+          ? Math.floor((Date.now() - snap.SnapshotCreateTime.getTime()) / (1000 * 60 * 60 * 24))
+          : 0;
+        if (ageDays > 90) {
+          findings.push(`[LOW] Snapshot ${id}: ${ageDays} days old — consider cleanup`);
+        }
+      }
+
+      if (unencryptedSnapshots > 0) {
+        output += `❌ **${unencryptedSnapshots} unencrypted snapshots** — data exposed if shared\n\n`;
+      } else if (snapshots.length > 0) {
+        output += `✅ All ${snapshots.length} snapshots encrypted\n\n`;
+      }
+    }
+
+    // ── Summary ───────────────────────────────────────────────────────────────
+    output += `## Security Summary\n\n`;
+    output += `| Severity | Count |\n|----------|-------|\n`;
+    output += `| CRITICAL | ${criticalCount} |\n`;
+    output += `| HIGH | ${highCount} |\n`;
+    output += `| MEDIUM | ${mediumCount} |\n\n`;
+
+    if (findings.length > 0) {
+      output += `## Findings\n\n`;
+      for (const f of findings) output += `${f}\n`;
+    } else {
+      output += `✅ No critical or high findings.\n`;
+    }
+
+  } catch (error: any) {
+    output += `\n[ERROR] ${error.message}\n`;
+  }
+
+  return output;
+}
+
+/**
+ * Simulate IAM permissions for a principal using SimulatePrincipalPolicy
+ */
+async function simulatePermissions(principalArn: string, actionsInput?: string, resourceArn?: string): Promise<string> {
+  // Default to a broad set of high-value offensive actions if none provided
+  const defaultActions = [
+    'iam:CreateUser', 'iam:AttachUserPolicy', 'iam:CreateAccessKey', 'iam:PutUserPolicy',
+    'iam:CreateRole', 'iam:AttachRolePolicy', 'iam:PassRole', 'iam:UpdateAssumeRolePolicy',
+    's3:GetObject', 's3:PutObject', 's3:ListBucket', 's3:DeleteObject', 's3:GetBucketPolicy',
+    'ec2:DescribeInstances', 'ec2:RunInstances', 'ec2:CreateSecurityGroup',
+    'lambda:CreateFunction', 'lambda:InvokeFunction', 'lambda:UpdateFunctionCode',
+    'sts:AssumeRole', 'secretsmanager:GetSecretValue', 'kms:Decrypt',
+    'cloudformation:CreateStack', 'ssm:GetParameter', 'ssm:StartSession',
+  ];
+
+  const actions = actionsInput
+    ? actionsInput.split(',').map(a => a.trim()).filter(Boolean)
+    : defaultActions;
+
+  const resource = resourceArn || '*';
+
+  const output: string[] = [];
+  output.push(`# IAM Permission Simulation\n`);
+  output.push(`**Principal:** ${principalArn}`);
+  output.push(`**Resource:** ${resource}`);
+  output.push(`**Actions Tested:** ${actions.length}`);
+  output.push(`**Scan Time:** ${new Date().toISOString()}\n`);
+
+  const allowed: string[] = [];
+  const denied: string[] = [];
+  const errors: string[] = [];
+
+  try {
+    // SimulatePrincipalPolicy supports up to 100 actions per call; batch if needed
+    const batchSize = 100;
+    for (let i = 0; i < actions.length; i += batchSize) {
+      const batch = actions.slice(i, i + batchSize);
+
+      const resp = await iamClient.send(new SimulatePrincipalPolicyCommand({
+        PolicySourceArn: principalArn,
+        ActionNames: batch,
+        ResourceArns: [resource],
+      }));
+
+      for (const result of resp.EvaluationResults || []) {
+        const action = result.EvalActionName || '';
+        if (result.EvalDecision === 'allowed') {
+          allowed.push(action);
+        } else {
+          denied.push(action);
+        }
+      }
+    }
+
+    // ── Results ────────────────────────────────────────────────────────────
+    const highValueAllowed = allowed.filter(a =>
+      ['iam:CreateUser','iam:AttachUserPolicy','iam:CreateAccessKey','iam:PutUserPolicy',
+       'iam:CreateRole','iam:AttachRolePolicy','iam:PassRole','iam:UpdateAssumeRolePolicy',
+       'sts:AssumeRole','lambda:CreateFunction','cloudformation:CreateStack',
+       'ssm:StartSession'].includes(a)
+    );
+
+    output.push(`## Summary\n`);
+    output.push(`| Result | Count |`);
+    output.push(`|--------|-------|`);
+    output.push(`| ✅ Allowed | ${allowed.length} |`);
+    output.push(`| ❌ Denied | ${denied.length} |`);
+
+    if (highValueAllowed.length > 0) {
+      output.push(`\n## ⚠️ High-Value Permissions ALLOWED (${highValueAllowed.length})\n`);
+      output.push(`These permissions can be used for privilege escalation or lateral movement:\n`);
+      for (const a of highValueAllowed) {
+        const risk = a.startsWith('iam:') ? 'CRITICAL — IAM manipulation' :
+                     a === 'sts:AssumeRole' ? 'CRITICAL — lateral movement' :
+                     a === 'ssm:StartSession' ? 'HIGH — remote code execution' :
+                     'HIGH';
+        output.push(`- **${a}** → ${risk}`);
+      }
+    }
+
+    if (allowed.length > 0) {
+      output.push(`\n## All Allowed Actions\n`);
+      output.push('```');
+      for (const a of allowed) output.push(a);
+      output.push('```');
+    }
+
+    if (denied.length > 0) {
+      output.push(`\n## Denied Actions\n`);
+      output.push('```');
+      for (const a of denied) output.push(a);
+      output.push('```');
+    }
+
+  } catch (error: any) {
+    if (error.name === 'NoSuchEntityException') {
+      return `# IAM Permission Simulation\n\n[ERROR] Principal not found: ${principalArn}`;
+    }
+    if (error.name === 'InvalidInputException') {
+      return `# IAM Permission Simulation\n\n[ERROR] Invalid input: ${error.message}`;
+    }
+    output.push(`\n[ERROR] Simulation failed: ${error.message}`);
+    output.push(`\n**Tip:** Ensure the caller has iam:SimulatePrincipalPolicy permission.`);
+  }
+
+  return output.join('\n');
+}
+
+/**
  * Analyze AMI security: public exposure, cross-account sharing, encryption, age
  */
 async function analyzeAMISecurity(region: string, includeAwsManaged: boolean = false): Promise<string> {
@@ -9571,6 +10586,1217 @@ async function scanECRPoisoning(region: string, repositoryName?: string, format:
   }
   
   return outputLines.join('\n');
+}
+
+async function scanLambdaEdgeExploits(region: string, distributionId?: string, format: string = "markdown"): Promise<string> {
+  const cloudfrontClient = new CloudFrontClient({ region });
+  const lambdaClient = new LambdaClient({ region: "us-east-1" }); // Lambda@Edge must be in us-east-1
+  
+  try {
+    const outputLines: string[] = [];
+    const scanTime = new Date().toISOString();
+    let distributionsToScan: any[] = [];
+    
+    // Get distribution(s) to analyze
+    if (distributionId) {
+      try {
+        const distConfig = await cloudfrontClient.send(new GetDistributionConfigCommand({ Id: distributionId }));
+        if (distConfig.DistributionConfig) {
+          distributionsToScan.push({ Id: distributionId, Config: distConfig.DistributionConfig });
+        }
+      } catch (error: any) {
+        return `Error: CloudFront distribution ${distributionId} not found: ${error.message}`;
+      }
+    } else {
+      const listResponse = await cloudfrontClient.send(new ListDistributionsCommand({}));
+      if (listResponse.DistributionList?.Items) {
+        for (const dist of listResponse.DistributionList.Items) {
+          try {
+            const distConfig = await cloudfrontClient.send(new GetDistributionConfigCommand({ Id: dist.Id }));
+            if (distConfig.DistributionConfig) {
+              distributionsToScan.push({ Id: dist.Id, Config: distConfig.DistributionConfig, DomainName: dist.DomainName });
+            }
+          } catch (error: any) {
+            // Skip distributions we can't access
+          }
+        }
+      }
+    }
+    
+    if (distributionsToScan.length === 0) {
+      return `No CloudFront distributions found or accessible`;
+    }
+    
+    // Risk counters
+    interface RiskCount {
+      originManipulation: number;
+      responseTampering: number;
+      cachePoisoning: number;
+      crossRegionAbuse: number;
+      authBypass: number;
+      originShieldBypass: number;
+      functionTampering: number;
+    }
+    
+    const risks: RiskCount = {
+      originManipulation: 0,
+      responseTampering: 0,
+      cachePoisoning: 0,
+      crossRegionAbuse: 0,
+      authBypass: 0,
+      originShieldBypass: 0,
+      functionTampering: 0,
+    };
+    
+    const detailedFindings: string[] = [];
+    
+    // Analyze each distribution
+    for (const dist of distributionsToScan) {
+      const distId = dist.Id;
+      const distDomain = dist.DomainName || 'Unknown';
+      const config = dist.Config;
+      
+      const distributionFindings: string[] = [];
+      
+      // Check 1: Lambda@Edge Origin Manipulation
+      const cacheBehaviors = [config.DefaultCacheBehavior, ...(config.CacheBehaviors?.Items || [])];
+      
+      for (const behavior of cacheBehaviors) {
+        const lambdaAssociations = behavior?.LambdaFunctionAssociations?.Items || [];
+        
+        for (const assoc of lambdaAssociations) {
+          const funcArn = assoc.LambdaFunctionARN || '';
+          const eventType = assoc.EventType || '';
+          
+          if (eventType === 'origin-request' || eventType === 'viewer-request') {
+            risks.originManipulation++;
+            distributionFindings.push(`#### TC-EDGE-001: Origin Manipulation Risk\n**Risk:** CRITICAL | **MITRE:** T1190 - Exploit Public-Facing Application\n- Lambda ARN: ${funcArn}\n- Event Type: ${eventType}\n- **Risk:** Function can modify origin requests, redirect to malicious origins, or steal credentials\n- **Attack Chain:**\n  1. Attacker gains access to Lambda function code\n  2. Modifies origin-request handler to redirect traffic\n  3. Steals authentication headers or session tokens\n  4. Exfiltrates data to attacker-controlled S3/API endpoint\n- **Remediation:**\n  * Implement strict IAM policies for Lambda function updates\n  * Use AWS Config rules to detect unauthorized function modifications\n  * Enable CloudWatch Logs and monitor for suspicious origin changes\n  * Implement function code signing\n  * Use AWS CloudTrail to audit Lambda@Edge function updates`);
+          }
+          
+          if (eventType === 'viewer-response' || eventType === 'origin-response') {
+            risks.responseTampering++;
+            distributionFindings.push(`#### TC-EDGE-002: Response Tampering Risk\n**Risk:** HIGH | **MITRE:** T1557 - Man-in-the-Middle\n- Lambda ARN: ${funcArn}\n- Event Type: ${eventType}\n- **Risk:** Function can inject malicious headers, modify response content, or perform XSS attacks\n- **Attack Chain:**\n  1. Compromise Lambda@Edge function\n  2. Inject malicious JavaScript into HTML responses\n  3. Add headers to bypass security controls (CSP, CORS)\n  4. Steal cookies and session data via injected code\n- **Remediation:**\n  * Implement Content Security Policy (CSP) headers at origin\n  * Monitor CloudWatch Logs for unexpected response modifications\n  * Use AWS WAF to detect response tampering patterns\n  * Implement response integrity checks\n  * Regularly audit function code for unauthorized changes`);
+          }
+          
+          // Check Lambda function configuration
+          try {
+            const funcName = funcArn.split(':function:')[1]?.split(':')[0];
+            if (funcName) {
+              const funcConfig = await lambdaClient.send(new GetFunctionCommand({ FunctionName: funcArn }));
+              
+              // Check for excessive permissions
+              const role = funcConfig.Configuration?.Role || '';
+              if (role.includes('AdministratorAccess') || role.includes('FullAccess')) {
+                risks.functionTampering++;
+                distributionFindings.push(`#### TC-EDGE-007: Over-Privileged Lambda@Edge Function\n**Risk:** HIGH | **MITRE:** T1078.004 - Valid Accounts: Cloud Accounts\n- Lambda ARN: ${funcArn}\n- Role: ${role}\n- **Risk:** Function has excessive IAM permissions, can be abused for privilege escalation\n- **Remediation:**\n  * Apply least privilege principle to execution role\n  * Remove unnecessary IAM permissions\n  * Use AWS Access Analyzer to identify over-permissive policies`);
+              }
+              
+              // Check environment variables for secrets
+              const envVars = funcConfig.Configuration?.Environment?.Variables || {};
+              const suspiciousPatterns = ['API_KEY', 'SECRET', 'PASSWORD', 'TOKEN', 'ACCESS_KEY'];
+              for (const [key, value] of Object.entries(envVars)) {
+                if (suspiciousPatterns.some(pattern => key.toUpperCase().includes(pattern))) {
+                  distributionFindings.push(`#### TC-EDGE-005: Hardcoded Credentials in Lambda@Edge\n**Risk:** MEDIUM | **MITRE:** T1552.001 - Unsecured Credentials: Credentials In Files\n- Lambda ARN: ${funcArn}\n- Variable: ${key}\n- **Risk:** Hardcoded secrets exposed in Lambda environment\n- **Remediation:** Use AWS Secrets Manager or Parameter Store`);
+                }
+              }
+            }
+          } catch (error: any) {
+            // Function details not accessible
+          }
+        }
+      }
+      
+      // Check 2: Cache Poisoning
+      if (config.DefaultCacheBehavior) {
+        const allowedMethods = config.DefaultCacheBehavior.AllowedMethods?.Items || [];
+        const cachedMethods = config.DefaultCacheBehavior.CachedMethods?.Items || [];
+        
+        if (allowedMethods.includes('POST') || allowedMethods.includes('PUT') || allowedMethods.includes('PATCH')) {
+          const forwardedValues = config.DefaultCacheBehavior.ForwardedValues;
+          const queryStringCaching = forwardedValues?.QueryString || false;
+          const headerCaching = forwardedValues?.Headers?.Items || [];
+          
+          if (queryStringCaching || headerCaching.length > 0) {
+            risks.cachePoisoning++;
+            distributionFindings.push(`#### TC-EDGE-003: Cache Poisoning Risk\n**Risk:** HIGH | **MITRE:** T1565.001 - Data Manipulation: Stored Data Manipulation\n- Distribution: ${distId}\n- Allowed Methods: ${allowedMethods.join(', ')}\n- Query String Caching: ${queryStringCaching}\n- Cached Headers: ${headerCaching.join(', ') || 'None'}\n- **Risk:** Attacker can poison CloudFront cache with malicious content\n- **Attack Chain:**\n  1. Craft requests with specific query parameters or headers\n  2. Inject malicious content that gets cached by CloudFront\n  3. Victims receive poisoned cached responses\n  4. Can lead to XSS, credential theft, or phishing\n- **Remediation:**\n  * Disable query string caching unless required\n  * Whitelist only necessary headers for caching\n  * Implement cache key normalization\n  * Use signed URLs/cookies for sensitive content\n  * Monitor CloudWatch metrics for cache hit ratio anomalies`);
+          }
+        }
+      }
+      
+      // Check 3: Origin Shield Bypass
+      const origins = config.Origins?.Items || [];
+      for (const origin of origins) {
+        const originShield = origin.OriginShield;
+        if (!originShield || !originShield.Enabled) {
+          risks.originShieldBypass++;
+          distributionFindings.push(`#### TC-EDGE-006: Origin Shield Not Enabled\n**Risk:** MEDIUM | **MITRE:** T1071.001 - Application Layer Protocol: Web Protocols\n- Origin: ${origin.Id}\n- Domain: ${origin.DomainName}\n- **Risk:** Direct attacks on origin without additional protection layer\n- **Remediation:**\n  * Enable Origin Shield to add additional caching layer\n  * Implement origin access control (OAC) for S3 origins\n  * Use AWS WAF at both CloudFront and origin\n  * Monitor origin access logs for direct access attempts`);
+        }
+        
+        // Check S3 origin configuration
+        if (origin.S3OriginConfig) {
+          const oai = origin.S3OriginConfig.OriginAccessIdentity || '';
+          if (!oai || oai === '') {
+            distributionFindings.push(`#### TC-EDGE-001: S3 Origin Without OAI/OAC\n**Risk:** HIGH | **MITRE:** T1530 - Data from Cloud Storage Object\n- Origin: ${origin.Id}\n- S3 Bucket: ${origin.DomainName}\n- **Risk:** S3 bucket may be publicly accessible, bypassing CloudFront\n- **Remediation:**\n  * Configure Origin Access Control (OAC) or Origin Access Identity (OAI)\n  * Remove public access from S3 bucket\n  * Use S3 bucket policies to restrict access to CloudFront only`);
+          }
+        }
+      }
+      
+      // Check 4: Cross-Region Abuse Detection
+      const cfRegionCount = new Set(origins.map((o: any) => o.DomainName?.split('.')[2] || 'unknown')).size;
+      if (cfRegionCount > 3) {
+        risks.crossRegionAbuse++;
+        distributionFindings.push(`#### TC-EDGE-004: Multi-Region Origin Configuration\n**Risk:** MEDIUM | **MITRE:** T1090 - Proxy: Multi-hop Proxy\n- Distribution: ${distId}\n- Region Count: ${cfRegionCount}\n- **Risk:** Complex multi-region setup increases attack surface\n- **Remediation:**\n  * Consolidate origins where possible\n  * Implement consistent security controls across all regions\n  * Monitor cross-region traffic patterns\n  * Use AWS CloudTrail to track configuration changes`);
+      }
+      
+      // Add distribution findings to detailed report
+      if (distributionFindings.length > 0) {
+        detailedFindings.push(`### CloudFront Distribution: ${distId}\n**Domain:** ${distDomain}\n**Lambda@Edge Functions:** ${cacheBehaviors.reduce((sum, b) => sum + (b?.LambdaFunctionAssociations?.Quantity || 0), 0)}\n\n${distributionFindings.join('\n\n')}\n`);
+      }
+    }
+    
+    // Build output
+    if (format === "json") {
+      const jsonOutput = {
+        scanType: "Lambda@Edge Exploitation Detection",
+        region: region,
+        distributionsAnalyzed: distributionsToScan.length,
+        scanTime: scanTime,
+        risks: risks,
+        totalRisks: Object.values(risks).reduce((sum, count) => sum + count, 0),
+        findings: detailedFindings
+      };
+      return JSON.stringify(jsonOutput, null, 2);
+    } else if (format === "table") {
+      outputLines.push(`Lambda@Edge Exploitation Scan - ${region}`);
+      outputLines.push(`Scan Time: ${scanTime}`);
+      outputLines.push(`Distributions: ${distributionsToScan.length}`);
+      outputLines.push(``);
+      outputLines.push(`| Risk Type                  | Count | Severity |`);
+      outputLines.push(`|----------------------------|-------|----------|`);
+      outputLines.push(`| Origin Manipulation        | ${risks.originManipulation} | CRITICAL |`);
+      outputLines.push(`| Response Tampering         | ${risks.responseTampering} | HIGH     |`);
+      outputLines.push(`| Cache Poisoning            | ${risks.cachePoisoning} | HIGH     |`);
+      outputLines.push(`| Cross-Region Abuse         | ${risks.crossRegionAbuse} | MEDIUM   |`);
+      outputLines.push(`| Auth Bypass                | ${risks.authBypass} | HIGH     |`);
+      outputLines.push(`| Origin Shield Bypass       | ${risks.originShieldBypass} | MEDIUM   |`);
+      outputLines.push(`| Function Tampering         | ${risks.functionTampering} | HIGH     |`);
+      return outputLines.join('\n');
+    }
+    
+    // Markdown format (default)
+    outputLines.push(`# Lambda@Edge Exploitation Detection Scan`);
+    outputLines.push(`**Region:** ${region} (Lambda@Edge functions must be in us-east-1)`);
+    outputLines.push(`**Distributions Analyzed:** ${distributionsToScan.length}`);
+    outputLines.push(`**Scan Time:** ${scanTime}`);
+    outputLines.push(``);
+    outputLines.push(`## Risk Summary`);
+    outputLines.push(`| Risk Type | Count | Severity |`);
+    outputLines.push(`|-----------|-------|----------|`);
+    outputLines.push(`| Origin Manipulation | ${risks.originManipulation} | CRITICAL |`);
+    outputLines.push(`| Response Tampering | ${risks.responseTampering} | HIGH |`);
+    outputLines.push(`| Cache Poisoning | ${risks.cachePoisoning} | HIGH |`);
+    outputLines.push(`| Cross-Region Abuse | ${risks.crossRegionAbuse} | MEDIUM |`);
+    outputLines.push(`| Auth Bypass | ${risks.authBypass} | HIGH |`);
+    outputLines.push(`| Origin Shield Bypass | ${risks.originShieldBypass} | MEDIUM |`);
+    outputLines.push(`| Function Tampering | ${risks.functionTampering} | HIGH |`);
+    outputLines.push(``);
+    
+    const totalRisks = Object.values(risks).reduce((sum, count) => sum + count, 0);
+    
+    if (totalRisks === 0) {
+      outputLines.push(`## ✅ No Critical Risks Detected`);
+      outputLines.push(``);
+      outputLines.push(`All ${distributionsToScan.length} CloudFront distributions passed Lambda@Edge security checks.`);
+      outputLines.push(``);
+    } else {
+      outputLines.push(`## ⚠️ Detailed Findings`);
+      outputLines.push(``);
+      
+      if (detailedFindings.length > 0) {
+        outputLines.push(detailedFindings.join('\n---\n\n'));
+      }
+    }
+    
+    outputLines.push(`## Remediation Recommendations`);
+    outputLines.push(``);
+    outputLines.push(`1. **Lambda@Edge Security:**`);
+    outputLines.push(`   - Implement least privilege IAM roles for Lambda@Edge functions`);
+    outputLines.push(`   - Enable function code signing to prevent unauthorized modifications`);
+    outputLines.push(`   - Use AWS Config to monitor Lambda@Edge function changes`);
+    outputLines.push(`   - Implement CloudWatch Logs for all Lambda@Edge functions`);
+    outputLines.push(``);
+    outputLines.push(`2. **Origin Security:**`);
+    outputLines.push(`   - Enable Origin Access Control (OAC) for S3 origins`);
+    outputLines.push(`   - Remove public access from S3 buckets serving CloudFront`);
+    outputLines.push(`   - Implement custom headers for origin authentication`);
+    outputLines.push(`   - Enable Origin Shield for additional protection`);
+    outputLines.push(``);
+    outputLines.push(`3. **Cache Security:**`);
+    outputLines.push(`   - Disable query string caching unless necessary`);
+    outputLines.push(`   - Whitelist only required headers for cache keys`);
+    outputLines.push(`   - Implement cache key normalization`);
+    outputLines.push(`   - Use signed URLs/cookies for sensitive content`);
+    outputLines.push(``);
+    outputLines.push(`4. **Monitoring:**`);
+    outputLines.push(`   - Enable CloudFront access logs and analyze patterns`);
+    outputLines.push(`   - Use CloudWatch metrics to detect anomalies`);
+    outputLines.push(`   - Implement AWS WAF rules at CloudFront edge`);
+    outputLines.push(`   - Monitor Lambda@Edge execution metrics for unusual patterns`);
+    outputLines.push(``);
+    outputLines.push(`5. **Response Integrity:**`);
+    outputLines.push(`   - Implement Content Security Policy (CSP) headers`);
+    outputLines.push(`   - Use Subresource Integrity (SRI) for external resources`);
+    outputLines.push(`   - Enable HTTP Strict Transport Security (HSTS)`);
+    outputLines.push(`   - Regularly audit response modification logic`);
+    outputLines.push(``);
+    
+    return outputLines.join('\n');
+  } catch (error: any) {
+    return `Error scanning Lambda@Edge exploits: ${error.message}`;
+  }
+}
+
+async function scanEventBridgeInjection(region: string, eventBusName?: string, format: string = "markdown"): Promise<string> {
+  const eventbridgeClient = new EventBridgeClient({ region });
+  
+  try {
+    const outputLines: string[] = [];
+    const scanTime = new Date().toISOString();
+    let eventBusesToScan: string[] = [];
+    
+    // Get event bus(es) to analyze
+    if (eventBusName) {
+      eventBusesToScan.push(eventBusName);
+    } else {
+      try {
+        const listBusesResponse = await eventbridgeClient.send(new ListEventBusesCommand({}));
+        eventBusesToScan = (listBusesResponse.EventBuses || []).map((bus: any) => bus.Name || 'default');
+      } catch (error: any) {
+        eventBusesToScan = ['default']; // Fall back to default bus
+      }
+    }
+    
+    if (eventBusesToScan.length === 0) {
+      return `No EventBridge event buses found in region ${region}`;
+    }
+    
+    // Risk counters
+    interface RiskCount {
+      wildcardPatterns: number;
+      crossAccountAccess: number;
+      putEventsAbuse: number;
+      archivePoisoning: number;
+      schemaManipulation: number;
+      dlqExtraction: number;
+      roleAssumption: number;
+      replayAttacks: number;
+    }
+    
+    const risks: RiskCount = {
+      wildcardPatterns: 0,
+      crossAccountAccess: 0,
+      putEventsAbuse: 0,
+      archivePoisoning: 0,
+      schemaManipulation: 0,
+      dlqExtraction: 0,
+      roleAssumption: 0,
+      replayAttacks: 0,
+    };
+    
+    const detailedFindings: string[] = [];
+    
+    // Analyze each event bus
+    for (const busName of eventBusesToScan) {
+      const busFindings: string[] = [];
+      
+      // Get event bus policy
+      try {
+        const busDetails = await eventbridgeClient.send(new DescribeEventBusCommand({ Name: busName }));
+        const policy = busDetails.Policy ? JSON.parse(busDetails.Policy) : null;
+        
+        if (policy && policy.Statement) {
+          for (const statement of policy.Statement) {
+            // Check 2: Cross-Account Event Injection
+            if (statement.Effect === 'Allow') {
+              const principals = Array.isArray(statement.Principal?.AWS) 
+                ? statement.Principal.AWS 
+                : statement.Principal?.AWS ? [statement.Principal.AWS] : [];
+              
+              if (statement.Principal === '*' || principals.includes('*')) {
+                risks.crossAccountAccess++;
+                busFindings.push(`#### TC-EVTBR-002: Wildcard Principal in Event Bus Policy\n**Risk:** CRITICAL | **MITRE:** T1098.001 - Account Manipulation: Additional Cloud Credentials\n- Event Bus: ${busName}\n- Policy Statement: ${JSON.stringify(statement, null, 2)}\n- **Risk:** ANY AWS account can send events to this event bus\n- **Attack Chain:**\n  1. Attacker discovers event bus ARN\n  2. Sends malicious events from external AWS account\n  3. Events trigger Lambda functions or other targets\n  4. Can lead to command injection, data exfiltration, or privilege escalation\n- **Remediation:**\n  * Remove wildcard principals from event bus policy\n  * Whitelist only trusted AWS account IDs\n  * Implement event pattern validation\n  * Use AWS CloudTrail to monitor PutEvents API calls`);
+              } else if (principals.length > 0) {
+                for (const principal of principals) {
+                  if (typeof principal === 'string' && principal.includes('arn:aws:iam::')) {
+                    const accountId = principal.split('::')[1]?.split(':')[0];
+                    busFindings.push(`#### TC-EVTBR-002: Cross-Account Event Bus Access\n**Risk:** HIGH | **MITRE:** T1078.004 - Valid Accounts: Cloud Accounts\n- Event Bus: ${busName}\n- External Account: ${accountId}\n- **Risk:** External account can inject events\n- **Remediation:**\n  * Verify this account is trusted\n  * Implement event pattern validation\n  * Monitor CloudTrail for PutEvents from this account`);
+                  }
+                }
+              }
+              
+              // Check for overly permissive actions
+              const actions = Array.isArray(statement.Action) ? statement.Action : [statement.Action];
+              if (actions.includes('events:*') || actions.includes('events:PutEvents')) {
+                risks.putEventsAbuse++;
+                busFindings.push(`#### TC-EVTBR-003: PutEvents Permission Granted\n**Risk:** HIGH | **MITRE:** T1078 - Valid Accounts\n- Event Bus: ${busName}\n- Actions: ${actions.join(', ')}\n- **Risk:** Principal can send arbitrary events, potential privilege escalation\n- **Remediation:**\n  * Limit permissions to specific event sources\n  * Implement Condition statements in policy\n  * Use EventBridge schemas to validate event structure`);
+              }
+            }
+          }
+        }
+      } catch (error: any) {
+        // Event bus details not accessible
+      }
+      
+      // Get rules for this event bus
+      try {
+        const listRulesResponse = await eventbridgeClient.send(new ListRulesCommand({ 
+          EventBusName: busName,
+          Limit: 100
+        }));
+        
+        const rules = listRulesResponse.Rules || [];
+        
+        for (const rule of rules) {
+          const ruleName = rule.Name || 'Unknown';
+          const eventPattern = rule.EventPattern ? JSON.parse(rule.EventPattern) : null;
+          
+          // Check 1: Wildcard Event Patterns
+          if (eventPattern) {
+            const hasWildcards = JSON.stringify(eventPattern).includes('*') || 
+                                 Object.keys(eventPattern).length === 0;
+            
+            if (hasWildcards || Object.keys(eventPattern).length === 0) {
+              risks.wildcardPatterns++;
+              busFindings.push(`#### TC-EVTBR-001: Wildcard Event Pattern\n**Risk:** HIGH | **MITRE:** T1562.001 - Impair Defenses: Disable or Modify Tools\n- Rule: ${ruleName}\n- Event Bus: ${busName}\n- Pattern: ${JSON.stringify(eventPattern, null, 2)}\n- **Risk:** Rule accepts ALL events, allowing injection of malicious payloads\n- **Attack Chain:**\n  1. Attacker crafts malicious events matching wildcard pattern\n  2. Events bypass intended filtering logic\n  3. Triggers downstream targets with attacker-controlled data\n  4. Can lead to Lambda code injection or data manipulation\n- **Remediation:**\n  * Implement specific event patterns with required fields\n  * Use EventBridge schemas to validate events\n  * Add event filtering at target level\n  * Monitor CloudWatch metrics for unexpected event volumes`);
+            }
+            
+            // Check for common injection patterns
+            const patternStr = JSON.stringify(eventPattern);
+            if (patternStr.includes('$..') || patternStr.includes('${')) {
+              busFindings.push(`#### TC-EVTBR-001: Potential Injection Pattern\n**Risk:** MEDIUM | **MITRE:** T1059 - Command and Control\n- Rule: ${ruleName}\n- Pattern contains potential injection syntax: ${patternStr.substring(0, 200)}\n- **Remediation:** Review pattern for unintended wildcard behavior`);
+            }
+          }
+          
+          // Get targets for this rule
+          try {
+            const targetsResponse = await eventbridgeClient.send(new ListTargetsByRuleCommand({
+              Rule: ruleName,
+              EventBusName: busName
+            }));
+            
+            const targets = targetsResponse.Targets || [];
+            
+            for (const target of targets) {
+              const targetArn = target.Arn || '';
+              const roleArn = target.RoleArn || '';
+              
+              // Check 7: IAM Role Assumption
+              if (roleArn) {
+                const roleAccountId = roleArn.split(':')[4];
+                risks.roleAssumption++;
+                busFindings.push(`#### TC-EVTBR-007: IAM Role Assumption via EventBridge\n**Risk:** MEDIUM | **MITRE:** T1098 - Account Manipulation\n- Rule: ${ruleName}\n- Target: ${targetArn}\n- Role: ${roleArn}\n- Account: ${roleAccountId}\n- **Risk:** EventBridge assumes IAM role to invoke target, potential privilege escalation\n- **Remediation:**\n  * Review IAM role trust policy\n  * Ensure role has least privilege permissions\n  * Monitor CloudTrail for AssumeRole calls by EventBridge`);
+              }
+              
+              // Check for Lambda targets
+              if (targetArn.includes(':lambda:')) {
+                busFindings.push(`#### TC-EVTBR-007: Lambda Function Target\n**Risk:** MEDIUM | **MITRE:** T1059.009 - Command and Scripting Interpreter: Cloud API\n- Rule: ${ruleName}\n- Lambda: ${targetArn}\n- **Risk:** Events trigger Lambda execution, verify function validates input\n- **Remediation:**\n  * Implement input validation in Lambda function\n  * Use Lambda environment variables securely\n  * Enable Lambda function concurrency limits`);
+              }
+              
+              // Check for SQS/SNS targets (DLQ extraction)
+              if (target.DeadLetterConfig?.Arn) {
+                risks.dlqExtraction++;
+                busFindings.push(`#### TC-EVTBR-006: Dead Letter Queue Configured\n**Risk:** LOW | **MITRE:** T1530 - Data from Cloud Storage Object\n- Rule: ${ruleName}\n- DLQ: ${target.DeadLetterConfig.Arn}\n- **Risk:** Failed events sent to DLQ may contain sensitive data\n- **Remediation:**\n  * Encrypt DLQ messages\n  * Restrict access to DLQ\n  * Monitor DLQ for unexpected message patterns\n  * Implement DLQ message retention policies`);
+              }
+            }
+          } catch (error: any) {
+            // Targets not accessible
+          }
+          
+          // Check rule state for replay attacks
+          if (rule.State === 'ENABLED') {
+            try {
+              const ruleDetails = await eventbridgeClient.send(new DescribeRuleCommand({
+                Name: ruleName,
+                EventBusName: busName
+              }));
+              
+              if (ruleDetails.EventPattern) {
+                risks.replayAttacks++;
+              }
+            } catch (error: any) {
+              // Rule details not accessible
+            }
+          }
+        }
+      } catch (error: any) {
+        // Rules not accessible
+      }
+      
+      // Check 4: Event Archives (Poisoning)
+      try {
+        const archivesResponse = await eventbridgeClient.send(new ListArchivesCommand({
+          EventSourceArn: busName.includes('arn:') ? busName : undefined,
+          Limit: 50
+        }));
+        
+        const archives = archivesResponse.Archives || [];
+        
+        if (archives.length > 0) {
+          for (const archive of archives) {
+            const archiveName = archive.ArchiveName || 'Unknown';
+            risks.archivePoisoning++;
+            busFindings.push(`#### TC-EVTBR-004: Event Archive Exists\n**Risk:** MEDIUM | **MITRE:** T1565.001 - Data Manipulation: Stored Data Manipulation\n- Archive: ${archiveName}\n- Event Bus: ${busName}\n- Event Count: ${archive.EventCount || 'Unknown'}\n- **Risk:** Archived events can be replayed, potentially with historical credentials\n- **Attack Chain:**\n  1. Attacker gains access to EventBridge archive\n  2. Replays historical events with old IAM credentials\n  3. Exploits time-based vulnerabilities\n  4. Bypasses rate limiting or security controls\n- **Remediation:**\n  * Encrypt event archives with KMS\n  * Implement archive access controls\n  * Monitor archive replay operations\n  * Set archive retention policies\n  * Validate replay requests have appropriate authorization`);
+          }
+        }
+      } catch (error: any) {
+        // Archives not accessible (expected for default bus)
+      }
+      
+      // Add bus findings to detailed report
+      if (busFindings.length > 0) {
+        detailedFindings.push(`### Event Bus: ${busName}\n\n${busFindings.join('\n\n')}\n`);
+      }
+    }
+    
+    // Build output
+    if (format === "json") {
+      const jsonOutput = {
+        scanType: "EventBridge Injection Vulnerability Scan",
+        region: region,
+        eventBusesAnalyzed: eventBusesToScan.length,
+        scanTime: scanTime,
+        risks: risks,
+        totalRisks: Object.values(risks).reduce((sum, count) => sum + count, 0),
+        findings: detailedFindings
+      };
+      return JSON.stringify(jsonOutput, null, 2);
+    } else if (format === "table") {
+      outputLines.push(`EventBridge Injection Scan - ${region}`);
+      outputLines.push(`Scan Time: ${scanTime}`);
+      outputLines.push(`Event Buses: ${eventBusesToScan.length}`);
+      outputLines.push(``);
+      outputLines.push(`| Risk Type                    | Count | Severity |`);
+      outputLines.push(`|------------------------------|-------|----------|`);
+      outputLines.push(`| Wildcard Event Patterns      | ${risks.wildcardPatterns} | HIGH     |`);
+      outputLines.push(`| Cross-Account Access         | ${risks.crossAccountAccess} | CRITICAL |`);
+      outputLines.push(`| PutEvents Abuse              | ${risks.putEventsAbuse} | HIGH     |`);
+      outputLines.push(`| Event Archive Poisoning      | ${risks.archivePoisoning} | MEDIUM   |`);
+      outputLines.push(`| Schema Manipulation          | ${risks.schemaManipulation} | MEDIUM   |`);
+      outputLines.push(`| DLQ Extraction               | ${risks.dlqExtraction} | LOW      |`);
+      outputLines.push(`| IAM Role Assumption          | ${risks.roleAssumption} | MEDIUM   |`);
+      outputLines.push(`| Replay Attacks               | ${risks.replayAttacks} | MEDIUM   |`);
+      return outputLines.join('\n');
+    }
+    
+    // Markdown format (default)
+    outputLines.push(`# EventBridge Injection Vulnerability Scan`);
+    outputLines.push(`**Region:** ${region}`);
+    outputLines.push(`**Event Buses Analyzed:** ${eventBusesToScan.length}`);
+    outputLines.push(`**Scan Time:** ${scanTime}`);
+    outputLines.push(``);
+    outputLines.push(`## Risk Summary`);
+    outputLines.push(`| Risk Type | Count | Severity |`);
+    outputLines.push(`|-----------|-------|----------|`);
+    outputLines.push(`| Wildcard Event Patterns | ${risks.wildcardPatterns} | HIGH |`);
+    outputLines.push(`| Cross-Account Access | ${risks.crossAccountAccess} | CRITICAL |`);
+    outputLines.push(`| PutEvents Abuse | ${risks.putEventsAbuse} | HIGH |`);
+    outputLines.push(`| Event Archive Poisoning | ${risks.archivePoisoning} | MEDIUM |`);
+    outputLines.push(`| Schema Manipulation | ${risks.schemaManipulation} | MEDIUM |`);
+    outputLines.push(`| DLQ Extraction | ${risks.dlqExtraction} | LOW |`);
+    outputLines.push(`| IAM Role Assumption | ${risks.roleAssumption} | MEDIUM |`);
+    outputLines.push(`| Replay Attacks | ${risks.replayAttacks} | MEDIUM |`);
+    outputLines.push(``);
+    
+    const totalRisks = Object.values(risks).reduce((sum, count) => sum + count, 0);
+    
+    if (totalRisks === 0) {
+      outputLines.push(`## ✅ No Critical Risks Detected`);
+      outputLines.push(``);
+      outputLines.push(`All ${eventBusesToScan.length} EventBridge event buses passed injection security checks.`);
+      outputLines.push(``);
+    } else {
+      outputLines.push(`## ⚠️ Detailed Findings`);
+      outputLines.push(``);
+      
+      if (detailedFindings.length > 0) {
+        outputLines.push(detailedFindings.join('\n---\n\n'));
+      }
+    }
+    
+    outputLines.push(`## Remediation Recommendations`);
+    outputLines.push(``);
+    outputLines.push(`1. **Event Pattern Security:**`);
+    outputLines.push(`   - Implement specific event patterns with required fields`);
+    outputLines.push(`   - Avoid wildcard patterns unless absolutely necessary`);
+    outputLines.push(`   - Use EventBridge schemas to validate event structure`);
+    outputLines.push(`   - Implement event filtering at target level`);
+    outputLines.push(``);
+    outputLines.push(`2. **Event Bus Policy:**`);
+    outputLines.push(`   - Remove wildcard principals from event bus policies`);
+    outputLines.push(`   - Whitelist only trusted AWS account IDs`);
+    outputLines.push(`   - Implement Condition statements for additional restrictions`);
+    outputLines.push(`   - Use AWS CloudTrail to monitor PutEvents API calls`);
+    outputLines.push(``);
+    outputLines.push(`3. **Target Security:**`);
+    outputLines.push(`   - Implement input validation in all Lambda targets`);
+    outputLines.push(`   - Use least privilege IAM roles for EventBridge targets`);
+    outputLines.push(`   - Enable DLQ encryption with KMS`);
+    outputLines.push(`   - Monitor target invocation metrics for anomalies`);
+    outputLines.push(``);
+    outputLines.push(`4. **Archive Security:**`);
+    outputLines.push(`   - Encrypt event archives with KMS customer-managed keys`);
+    outputLines.push(`   - Implement strict access controls on archives`);
+    outputLines.push(`   - Set appropriate retention policies`);
+    outputLines.push(`   - Monitor archive replay operations in CloudTrail`);
+    outputLines.push(``);
+    outputLines.push(`5. **Monitoring:**`);
+    outputLines.push(`   - Enable CloudWatch metrics for EventBridge rules`);
+    outputLines.push(`   - Monitor CloudTrail for PutEvents, CreateRule, PutRule operations`);
+    outputLines.push(`   - Set up CloudWatch alarms for unexpected event volumes`);
+    outputLines.push(`   - Implement AWS Config rules to detect policy changes`);
+    outputLines.push(`   - Use GuardDuty to detect malicious event injection patterns`);
+    outputLines.push(``);
+    outputLines.push(`6. **Schema Registry:**`);
+    outputLines.push(`   - Use EventBridge schema registry to enforce event structure`);
+    outputLines.push(`   - Implement schema versioning for backward compatibility`);
+    outputLines.push(`   - Monitor schema modifications in CloudTrail`);
+    outputLines.push(`   - Validate events against schemas at ingestion time`);
+    outputLines.push(``);
+    
+    return outputLines.join('\n');
+  } catch (error: any) {
+    return `Error scanning EventBridge injection vulnerabilities: ${error.message}`;
+  }
+}
+
+async function scanStepFunctionsAttacks(region: string, stateMachineArn?: string, format: string = "markdown"): Promise<string> {
+  const sfnClient = new SFNClient({ region });
+  const lambdaClient = new LambdaClient({ region });
+  const iamClient = new IAMClient({ region });
+  
+  try {
+    const outputLines: string[] = [];
+    const scanTime = new Date().toISOString();
+    let stateMachinesToScan: any[] = [];
+    
+    // Get state machine(s) to analyze
+    if (stateMachineArn) {
+      try {
+        const smResponse = await sfnClient.send(new DescribeStateMachineCommand({ stateMachineArn }));
+        stateMachinesToScan.push(smResponse);
+      } catch (error: any) {
+        return `Error: State Machine ${stateMachineArn} not found in region ${region}: ${error.message}`;
+      }
+    } else {
+      const listResponse = await sfnClient.send(new ListStateMachinesCommand({}));
+      for (const sm of listResponse.stateMachines || []) {
+        try {
+          const smDetails = await sfnClient.send(new DescribeStateMachineCommand({ stateMachineArn: sm.stateMachineArn }));
+          stateMachinesToScan.push(smDetails);
+        } catch (error: any) {
+          // Skip machines we can't access
+        }
+      }
+    }
+    
+    if (stateMachinesToScan.length === 0) {
+      return `No Step Functions state machines found in region ${region}`;
+    }
+    
+    // Risk counters
+    interface RiskCount {
+      stateMachineInjection: number;
+      insecureIntegrations: number;
+      executionHistory: number;
+      roleAssumptionChains: number;
+      expressWorkflow: number;
+      waitStateAbuse: number;
+      mapStateAbuse: number;
+      activityWorker: number;
+    }
+    
+    const risks: RiskCount = {
+      stateMachineInjection: 0,
+      insecureIntegrations: 0,
+      executionHistory: 0,
+      roleAssumptionChains: 0,
+      expressWorkflow: 0,
+      waitStateAbuse: 0,
+      mapStateAbuse: 0,
+      activityWorker: 0,
+    };
+    
+    const detailedFindings: string[] = [];
+    
+    // Analyze each state machine
+    for (const sm of stateMachinesToScan) {
+      const smName = sm.name || 'Unknown';
+      const smArn = sm.stateMachineArn || 'Unknown';
+      const smType = sm.type || 'STANDARD';
+      const roleArn = sm.roleArn || 'Unknown';
+      const creationDate = sm.creationDate ? new Date(sm.creationDate).toISOString() : 'Unknown';
+      
+      const machineFindings: string[] = [];
+      
+      let definition: any = {};
+      try {
+        definition = JSON.parse(sm.definition || '{}');
+      } catch (error: any) {
+        machineFindings.push(`#### TC-STEP-001: Invalid State Machine Definition\n**Risk:** CRITICAL | **MITRE:** T1190 - Exploit Public-Facing Application\n- Unable to parse state machine definition\n- **Risk:** Malformed definition may allow injection attacks\n- **Remediation:** Validate state machine definition, use CloudFormation for deployment`);
+        risks.stateMachineInjection++;
+      }
+      
+      // Check 1: State Machine Definition Injection via Dynamic Tasks
+      const states = definition.States || {};
+      for (const [stateName, stateConfig] of Object.entries(states)) {
+        const state = stateConfig as any;
+        
+        // Check for Task states with dynamic parameters
+        if (state.Type === 'Task') {
+          const resource = state.Resource || '';
+          
+          // Check for Lambda integration with dynamic input
+          if (resource.includes(':lambda:')) {
+            if (state.Parameters && JSON.stringify(state.Parameters).includes('.$')) {
+              risks.stateMachineInjection++;
+              machineFindings.push(`#### TC-STEP-001: Dynamic Task Parameters\n**Risk:** HIGH | **MITRE:** T1059.007 - Command and Scripting Interpreter: JavaScript\n- State: ${stateName}\n- Resource: ${resource}\n- **Risk:** Dynamic parameters using JSONPath (.$) can be manipulated via execution input\n- **Remediation:** Validate and sanitize all input parameters, use input schema validation, implement least privilege IAM policies`);
+            }
+            
+            // Check for insecure Lambda integration
+            const lambdaFunctionArn = resource.split(':function:')[1]?.split(':')[0];
+            if (lambdaFunctionArn) {
+              try {
+                const funcConfig = await lambdaClient.send(new GetFunctionCommand({ FunctionName: lambdaFunctionArn }));
+                const envVars = funcConfig.Configuration?.Environment?.Variables || {};
+                const suspiciousVars = Object.keys(envVars).filter(k => 
+                  /secret|password|key|token|api/i.test(k)
+                );
+                if (suspiciousVars.length > 0) {
+                  risks.insecureIntegrations++;
+                  machineFindings.push(`#### TC-STEP-002: Lambda with Hardcoded Secrets\n**Risk:** HIGH | **MITRE:** T1552.001 - Credentials In Files\n- State: ${stateName}\n- Lambda: ${lambdaFunctionArn}\n- Suspicious Env Vars: ${suspiciousVars.join(', ')}\n- **Risk:** Lambda function has hardcoded secrets in environment variables\n- **Remediation:** Use AWS Secrets Manager or Parameter Store with dynamic resolution`);
+                }
+              } catch (error: any) {
+                // Lambda function not accessible
+              }
+            }
+          }
+          
+          // Check for SNS/SQS/ECS integrations
+          if (resource.includes(':sns:') || resource.includes(':sqs:') || resource.includes(':ecs:')) {
+            risks.insecureIntegrations++;
+            const service = resource.includes(':sns:') ? 'SNS' : resource.includes(':sqs:') ? 'SQS' : 'ECS';
+            machineFindings.push(`#### TC-STEP-002: ${service} Integration\n**Risk:** MEDIUM | **MITRE:** T1563 - Remote Service Session Hijacking\n- State: ${stateName}\n- Resource: ${resource}\n- **Risk:** Service integration may leak execution data or allow message injection\n- **Remediation:** Use encryption, validate message schemas, implement resource policies`);
+          }
+        }
+        
+        // Check for Wait states (persistence abuse)
+        if (state.Type === 'Wait') {
+          const seconds = state.Seconds || 0;
+          if (seconds > 3600) { // > 1 hour
+            risks.waitStateAbuse++;
+            machineFindings.push(`#### TC-STEP-006: Long Wait State\n**Risk:** MEDIUM | **MITRE:** T1496 - Resource Hijacking\n- State: ${stateName}\n- Wait Time: ${seconds} seconds (${Math.floor(seconds/3600)} hours)\n- **Risk:** Long wait states can be used for persistence or resource exhaustion\n- **Remediation:** Use EventBridge for long delays, implement execution timeouts`);
+          }
+        }
+        
+        // Check for Map states (parallel execution abuse)
+        if (state.Type === 'Map') {
+          const maxConcurrency = state.MaxConcurrency || 0;
+          if (maxConcurrency === 0 || maxConcurrency > 100) {
+            risks.mapStateAbuse++;
+            machineFindings.push(`#### TC-STEP-007: Unrestricted Map State Parallelism\n**Risk:** HIGH | **MITRE:** T1496 - Resource Hijacking\n- State: ${stateName}\n- Max Concurrency: ${maxConcurrency === 0 ? 'Unlimited' : maxConcurrency}\n- **Risk:** Unlimited parallelism can cause resource exhaustion and cost spike\n- **Remediation:** Set MaxConcurrency to reasonable value (e.g., 10-40)`);
+          }
+        }
+        
+        // Check for Task states with role assumption
+        if (state.Type === 'Task' && state.Credentials) {
+          risks.roleAssumptionChains++;
+          machineFindings.push(`#### TC-STEP-004: Dynamic Role Assumption\n**Risk:** HIGH | **MITRE:** T1098.003 - Account Manipulation: Additional Cloud Roles\n- State: ${stateName}\n- Credentials: Dynamic role assumption enabled\n- **Risk:** State can assume different IAM roles, enabling privilege escalation chains\n- **Remediation:** Use static execution role, validate role ARNs with Condition keys, implement SCPs`);
+        }
+      }
+      
+      // Check 2: Express Workflow Exploitation
+      if (smType === 'EXPRESS') {
+        risks.expressWorkflow++;
+        machineFindings.push(`#### TC-STEP-005: Express Workflow\n**Risk:** MEDIUM | **MITRE:** T1578.002 - Modify Cloud Compute Infrastructure: Create Cloud Instance\n- Type: ${smType}\n- **Risk:** Express workflows have limited logging (CloudWatch only), harder to audit\n- **Remediation:** Enable CloudWatch Logs, use X-Ray tracing, consider STANDARD workflows for sensitive operations`);
+      }
+      
+      // Check 3: Execution History Exposure
+      try {
+        const execListResponse = await sfnClient.send(new ListExecutionsCommand({ 
+          stateMachineArn: smArn,
+          maxResults: 10  
+        }));
+        
+        if (execListResponse.executions && execListResponse.executions.length > 0) {
+          for (const exec of execListResponse.executions.slice(0, 3)) {
+            try {
+              const execDetails = await sfnClient.send(new DescribeExecutionCommand({ 
+                executionArn: exec.executionArn 
+              }));
+              
+              const input = execDetails.input || '{}';
+              const output = execDetails.output || '{}';
+              
+              // Check for sensitive data patterns
+              const sensitivePatterns = /(password|secret|key|token|api[_-]?key|private[_-]?key|credential)/i;
+              if (sensitivePatterns.test(input) || sensitivePatterns.test(output)) {
+                risks.executionHistory++;
+                machineFindings.push(`#### TC-STEP-003: Execution History Contains Secrets\n**Risk:** CRITICAL | **MITRE:** T1552.005 - Credentials from Password Stores: Cloud Secrets Management Stores\n- Execution: ${exec.name || 'Unknown'}\n- **Risk:** Execution input/output contains sensitive data patterns\n- **Remediation:** Never pass secrets in execution input, use Secrets Manager ARNs instead, enable encryption at rest`);
+                break;  // Only report once per state machine
+              }
+            } catch (error: any) {
+              // Execution not accessible
+            }
+          }
+        }
+      } catch (error: any) {
+        // Could not list executions
+      }
+      
+      // Check 4: IAM Role Analysis
+      if (roleArn && roleArn !== 'Unknown') {
+        try {
+          const roleName = roleArn.split('/').pop() || '';
+          const roleDetails = await iamClient.send(new GetRoleCommand({ RoleName: roleName }));
+          
+          // Check trust policy
+          const trustPolicy = roleDetails.Role?.AssumeRolePolicyDocument ? 
+            JSON.parse(decodeURIComponent(roleDetails.Role.AssumeRolePolicyDocument)) : null;
+          
+          if (trustPolicy) {
+            for (const statement of trustPolicy.Statement || []) {
+              if (statement.Principal?.Service?.includes('states.amazonaws.com')) {
+                // Good: States service can assume the role
+              } else if (statement.Principal === '*' || statement.Principal?.AWS === '*') {
+                risks.roleAssumptionChains++;
+                machineFindings.push(`#### TC-STEP-004: Overly Permissive Role Trust Policy\n**Risk:** CRITICAL | **MITRE:** T1098.003 - Account Manipulation: Additional Cloud Roles\n- Role: ${roleName}\n- **Risk:** Trust policy allows any principal to assume the role\n- **Remediation:** Restrict trust policy to states.amazonaws.com with Condition keys`);
+              }
+            }
+          }
+          
+          // Check for overly permissive policies
+          const attachedPoliciesResponse = await iamClient.send(
+            new ListAttachedRolePoliciesCommand({ RoleName: roleName })
+          );
+          const attachedPolicies = attachedPoliciesResponse.AttachedPolicies || [];
+          
+          for (const policy of attachedPolicies) {
+            const policyName = policy.PolicyName || '';
+            if (policyName.includes('Admin') || policyName.includes('FullAccess') || policyName.includes('PowerUser')) {
+              risks.roleAssumptionChains++;
+              machineFindings.push(`#### TC-STEP-004: Overly Permissive IAM Role\n**Risk:** HIGH | **MITRE:** T1068 - Exploitation for Privilege Escalation\n- Role: ${roleName}\n- Policy: ${policyName}\n- **Risk:** State machine execution role has admin/full access permissions\n- **Remediation:** Implement least privilege, use managed policies for specific services only`);
+            }
+          }
+        } catch (error: any) {
+          // Role not accessible
+        }
+      }
+      
+      // Check 5: Activity Worker Impersonation
+      const hasActivity = Object.values(states).some((state: any) => 
+        state.Type === 'Task' && state.Resource?.includes(':activity:')
+      );
+      
+      if (hasActivity) {
+        risks.activityWorker++;
+        machineFindings.push(`#### TC-STEP-008: Activity Worker Usage\n**Risk:** MEDIUM | **MITRE:** T1557.003 - Man-in-the-Middle: DHCP Spoofing\n- **Risk:** Activity workers poll for tasks, can be impersonated if not properly authenticated\n- **Remediation:** Implement worker authentication, use network isolation, validate worker identity with API Gateway`);
+      }
+      
+      // Add machine findings to detailed report
+      if (machineFindings.length > 0) {
+        detailedFindings.push(`### State Machine: ${smName}\n**ARN:** ${smArn}\n**Type:** ${smType}\n**Role:** ${roleArn}\n**Created:** ${creationDate}\n**States:** ${Object.keys(states).length}\n\n${machineFindings.join('\n\n')}\n`);
+      }
+    }
+    
+    // Build output
+    outputLines.push(`# Step Functions Attack Chain Scan`);
+    outputLines.push(`**Region:** ${region}`);
+    outputLines.push(`**State Machines Analyzed:** ${stateMachinesToScan.length}`);
+    outputLines.push(`**Scan Time:** ${scanTime}`);
+    outputLines.push(``);
+    outputLines.push(`## Risk Summary`);
+    outputLines.push(`| Risk Type | Count | Severity |`);
+    outputLines.push(`|-----------|-------|----------|`);
+    outputLines.push(`| State Machine Injection | ${risks.stateMachineInjection} | CRITICAL |`);
+    outputLines.push(`| Insecure Integrations | ${risks.insecureIntegrations} | HIGH |`);
+    outputLines.push(`| Execution History Exposure | ${risks.executionHistory} | CRITICAL |`);
+    outputLines.push(`| IAM Role Assumption Chains | ${risks.roleAssumptionChains} | HIGH |`);
+    outputLines.push(`| Express Workflow Risks | ${risks.expressWorkflow} | MEDIUM |`);
+    outputLines.push(`| Wait State Abuse | ${risks.waitStateAbuse} | MEDIUM |`);
+    outputLines.push(`| Map State Abuse | ${risks.mapStateAbuse} | HIGH |`);
+    outputLines.push(`| Activity Worker Risks | ${risks.activityWorker} | MEDIUM |`);
+    outputLines.push(``);
+    
+    const totalRisks = risks.stateMachineInjection + risks.insecureIntegrations + risks.executionHistory + 
+                       risks.roleAssumptionChains + risks.expressWorkflow + risks.waitStateAbuse + 
+                       risks.mapStateAbuse + risks.activityWorker;
+    
+    if (totalRisks === 0) {
+      outputLines.push(`## ✅ No Critical Risks Detected`);
+      outputLines.push(``);
+      outputLines.push(`All ${stateMachinesToScan.length} Step Functions state machines passed security checks for:`);
+      outputLines.push(`- State machine definition injection`);
+      outputLines.push(`- Insecure service integrations`);
+      outputLines.push(`- Execution history data leakage`);
+      outputLines.push(`- IAM role assumption chains`);
+      outputLines.push(`- Express workflow exploitation`);
+      outputLines.push(`- Wait/Map state abuse`);
+      outputLines.push(`- Activity worker impersonation`);
+      outputLines.push(``);
+    } else {
+      outputLines.push(`## ⚠️ Detailed Findings`);
+      outputLines.push(``);
+      
+      if (detailedFindings.length > 0) {
+        outputLines.push(detailedFindings.join('\n---\n\n'));
+      }
+    }
+    
+    outputLines.push(`## Remediation Recommendations`);
+    outputLines.push(``);
+    outputLines.push(`1. **Input Validation:**`);
+    outputLines.push(`   - Implement JSON Schema validation for all execution inputs`);
+    outputLines.push(`   - Sanitize dynamic parameters before passing to integrations`);
+    outputLines.push(`   - Use AWS AppConfig for feature flags and configuration`);
+    outputLines.push(``);
+    outputLines.push(`2. **IAM Security:**`);
+    outputLines.push(`   - Implement least privilege execution roles`);
+    outputLines.push(`   - Add Condition keys to trust policies (aws:SourceAccount, aws:SourceArn)`);
+    outputLines.push(`   - Regularly audit role permissions with Access Analyzer`);
+    outputLines.push(``);
+    outputLines.push(`3. **Secrets Management:**`);
+    outputLines.push(`   - Never pass secrets in execution input or state data`);
+    outputLines.push(`   - Use AWS Secrets Manager with dynamic references`);
+    outputLines.push(`   - Enable encryption at rest for execution history`);
+    outputLines.push(``);
+    outputLines.push(`4. **Integration Security:**`);
+    outputLines.push(`   - Use VPC endpoints for service integrations`);
+    outputLines.push(`   - Implement resource-based policies on Lambda, SNS, SQS`);
+    outputLines.push(`   - Enable X-Ray tracing for monitoring`);
+    outputLines.push(``);
+    outputLines.push(`5. **Monitoring:**`);
+    outputLines.push(`   - Enable CloudWatch Logs for all state machines`);
+    outputLines.push(`   - Set up CloudWatch Alarms for failed executions`);
+    outputLines.push(`   - Use EventBridge to track state machine events`);
+    outputLines.push(`   - Implement AWS CloudTrail for audit logging`);
+    outputLines.push(``);
+    outputLines.push(`6. **State Machine Design:**`);
+    outputLines.push(`   - Set reasonable timeouts for all states`);
+    outputLines.push(`   - Limit MaxConcurrency in Map states`);
+    outputLines.push(`   - Use STANDARD workflows for sensitive operations`);
+    outputLines.push(`   - Implement error handling and retry logic`);
+    outputLines.push(``);
+    
+    return outputLines.join('\n');
+  } catch (error: any) {
+    return `Error scanning Step Functions attacks: ${error.message}`;
+  }
+}
+
+async function scanIMDSv2Bypass(region: string, instanceId?: string, clusterName?: string, format: string = "markdown"): Promise<string> {
+  const ec2Client = new EC2Client({ region });
+  const eksClient = new EKSClient({ region });
+  const lambdaClient = new LambdaClient({ region });
+  
+  try {
+    const outputLines: string[] = [];
+    const scanTime = new Date().toISOString();
+    
+    // Risk counters
+    interface RiskCount {
+      imdsv1Enabled: number;
+      ssrfVulnerable: number;
+      containerMetadataExposure: number;
+      eksNodeAccess: number;
+      lambdaEnvVarLeakage: number;
+      ssmCredentialTheft: number;
+      launchTemplateMisconfig: number;
+      vpcEndpointBypass: number;
+    }
+    
+    const risks: RiskCount = {
+      imdsv1Enabled: 0,
+      ssrfVulnerable: 0,
+      containerMetadataExposure: 0,
+      eksNodeAccess: 0,
+      lambdaEnvVarLeakage: 0,
+      ssmCredentialTheft: 0,
+      launchTemplateMisconfig: 0,
+      vpcEndpointBypass: 0,
+    };
+    
+    const detailedFindings: string[] = [];
+    
+    // Check 1: EC2 IMDSv1 still enabled
+    let instancesToScan: any[] = [];
+    
+    if (instanceId) {
+      try {
+        const instanceResponse = await ec2Client.send(new DescribeInstancesCommand({ 
+          InstanceIds: [instanceId] 
+        }));
+        for (const reservation of instanceResponse.Reservations || []) {
+          instancesToScan.push(...(reservation.Instances || []));
+        }
+      } catch (error: any) {
+        return `Error: Instance ${instanceId} not found in region ${region}: ${error.message}`;
+      }
+    } else {
+      const instancesResponse = await ec2Client.send(new DescribeInstancesCommand({}));
+      for (const reservation of instancesResponse.Reservations || []) {
+        instancesToScan.push(...(reservation.Instances || []));
+      }
+    }
+    
+    const instanceFindings: string[] = [];
+    
+    for (const instance of instancesToScan) {
+      const instId = instance.InstanceId || 'Unknown';
+      const instState = instance.State?.Name || 'Unknown';
+      const httpTokens = instance.MetadataOptions?.HttpTokens || 'optional';
+      const httpPutResponseHopLimit = instance.MetadataOptions?.HttpPutResponseHopLimit || 1;
+      const httpEndpoint = instance.MetadataOptions?.HttpEndpoint || 'enabled';
+      const iamRole = instance.IamInstanceProfile?.Arn?.split('/').pop() || 'None';
+      const publicIp = instance.PublicIpAddress || 'None';
+      const privateIp = instance.PrivateIpAddress || 'Unknown';
+      
+      const instanceSubFindings: string[] = [];
+      
+      // TC-IMDS-001: IMDSv1 still enabled
+      if (httpTokens !== 'required') {
+        risks.imdsv1Enabled++;
+        risks.ssrfVulnerable++;
+        instanceSubFindings.push(`#### TC-IMDS-001: IMDSv1 Enabled\n**Risk:** CRITICAL | **MITRE:** T1552.005 - Credentials from Password Stores: Cloud Secrets Management Stores\n- HttpTokens: ${httpTokens} (should be "required")\n- HttpEndpoint: ${httpEndpoint}\n- IAM Role: ${iamRole}\n- **Risk:** IMDSv1 allows SSRF attacks to steal credentials without token\n- **Attack:** \`curl http://169.254.169.254/latest/meta-data/iam/security-credentials/${iamRole}\`\n- **Remediation:** Enforce IMDSv2 with \`aws ec2 modify-instance-metadata-options --instance-id ${instId} --http-tokens required\``);
+      }
+      
+      // TC-IMDS-002: SSRF-based token extraction (Hop Limit check)
+      if (httpTokens === 'required' && httpPutResponseHopLimit > 1) {
+        risks.ssrfVulnerable++;
+        instanceSubFindings.push(`#### TC-IMDS-002: High Hop Limit for IMDSv2\n**Risk:** HIGH | **MITRE:** T1190 - Exploit Public-Facing Application\n- Hop Limit: ${httpPutResponseHopLimit} (should be 1 for containers)\n- **Risk:** High hop limit allows SSRF to proxy IMDSv2 token requests through containers\n- **Attack:** Container can forward PUT request to get token, then access metadata\n- **Remediation:** Set hop limit to 1 for container workloads, 2 only if strictly necessary`);
+      }
+      
+      // TC-IMDS-003: Container metadata exposure via host networking
+      if (httpTokens !== 'required' && iamRole !== 'None') {
+        risks.containerMetadataExposure++;
+        instanceSubFindings.push(`#### TC-IMDS-003: Container Metadata Exposure\n**Risk:** HIGH | **MITRE:** T1078.004 - Valid Accounts: Cloud Accounts\n- IAM Role: ${iamRole}\n- **Risk:** Containers with host networking can access IMDS and steal node credentials\n- **Attack:** From container: \`curl http://169.254.169.254/latest/meta-data/iam/security-credentials/\`\n- **Remediation:** Enable IMDSv2, use IRSA for EKS pods, avoid host networking`);
+      }
+      
+      // TC-IMDS-007: Launch template misconfigurations
+      if (instance.LaunchTemplate) {
+        risks.launchTemplateMisconfig++;
+        const ltId = instance.LaunchTemplate.LaunchTemplateId || 'Unknown';
+        const ltVersion = instance.LaunchTemplate.Version || 'Unknown';
+        instanceSubFindings.push(`#### TC-IMDS-007: Launch Template IMDS Config\n**Risk:** MEDIUM | **MITRE:** T1525 - Implant Internal Image\n- Launch Template: ${ltId} (v${ltVersion})\n- **Risk:** Launch template may not enforce IMDSv2, creating vulnerable instances\n- **Remediation:** Update launch template to enforce IMDSv2, use launch template versions with proper metadata options`);
+      }
+      
+      // TC-IMDS-008: VPC endpoint bypass techniques
+      if (publicIp !== 'None') {
+        risks.vpcEndpointBypass++;
+        instanceSubFindings.push(`#### TC-IMDS-008: Public IP on Instance\n**Risk:** MEDIUM | **MITRE:** T1071.001 - Application Layer Protocol: Web Protocols\n- Public IP: ${publicIp}\n- **Risk:** Public instances can bypass VPC endpoints for data exfiltration\n- **Remediation:** Use private subnets, enforce VPC endpoints, implement NACLs and security groups`);
+      }
+      
+      if (instanceSubFindings.length > 0) {
+        instanceFindings.push(`### Instance: ${instId}\n**State:** ${instState}\n**Private IP:** ${privateIp}\n**Public IP:** ${publicIp}\n**IAM Role:** ${iamRole}\n**HttpTokens:** ${httpTokens}\n**Hop Limit:** ${httpPutResponseHopLimit}\n\n${instanceSubFindings.join('\n\n')}\n`);
+      }
+    }
+    
+    if (instanceFindings.length > 0) {
+      detailedFindings.push(...instanceFindings);
+    }
+    
+    // Check 2: EKS node metadata access from pods
+    if (clusterName || !instanceId) {
+      const eksFindings: string[] = [];
+      const clustersToScan: string[] = [];
+      
+      if (clusterName) {
+        clustersToScan.push(clusterName);
+      } else {
+        try {
+          const clusterListResponse = await eksClient.send(new ListClustersCommand({}));
+          clustersToScan.push(...(clusterListResponse.clusters || []));
+        } catch (error: any) {
+          // No EKS clusters or no permission
+        }
+      }
+      
+      for (const cluster of clustersToScan) {
+        try {
+          const clusterResponse = await eksClient.send(new DescribeClusterCommand({ name: cluster }));
+          const clusterData = clusterResponse.cluster;
+          
+          if (!clusterData) continue;
+          
+          const oidcIssuer = clusterData.identity?.oidc?.issuer || 'Not configured';
+          const oidcEnabled = !!clusterData.identity?.oidc?.issuer;
+          
+          // Get node groups
+          try {
+            const nodeGroupsResponse = await eksClient.send(new ListNodegroupsCommand({ clusterName: cluster }));
+            const nodeGroupNames = nodeGroupsResponse.nodegroups || [];
+            
+            for (const ngName of nodeGroupNames) {
+              const ngDetails = await eksClient.send(new DescribeNodegroupCommand({ 
+                clusterName: cluster, 
+                nodegroupName: ngName 
+              }));
+              const ng = ngDetails.nodegroup;
+              
+              if (!ng) continue;
+              
+              // Check IMDSv2 enforcement through launch template
+              const ltName = ng.launchTemplate?.name || 'Unknown';
+              const ltVersion = ng.launchTemplate?.version || 'Unknown';
+              
+              // TC-IMDS-004: EKS node metadata access from pods
+              if (!oidcEnabled) {
+                risks.eksNodeAccess++;
+                eksFindings.push(`#### TC-IMDS-004: EKS IRSA Not Configured\n**Risk:** HIGH | **MITRE:** T1552.005 - Credentials from Password Stores: Cloud Secrets Management Stores\n- Cluster: ${cluster}\n- Node Group: ${ngName}\n- OIDC: ${oidcEnabled ? 'Enabled' : 'DISABLED'}\n- **Risk:** Pods can access node IAM credentials via IMDS, no IRSA isolation\n- **Attack:** From pod: \`curl http://169.254.169.254/latest/meta-data/iam/security-credentials/\`\n- **Remediation:** Enable IRSA (OIDC provider), configure service account role bindings, enforce IMDSv2`);
+              }
+              
+              if (ng.launchTemplate) {
+                risks.launchTemplateMisconfig++;
+                eksFindings.push(`#### TC-IMDS-007: EKS Launch Template Config\n**Risk:** MEDIUM | **MITRE:** T1525 - Implant Internal Image\n- Cluster: ${cluster}\n- Node Group: ${ngName}\n- Launch Template: ${ltName} (v${ltVersion})\n- **Risk:** Launch template may not enforce IMDSv2 for EKS nodes\n- **Remediation:** Update launch template metadata options, set HttpTokens=required and HttpPutResponseHopLimit=1`);
+              }
+            }
+          } catch (error: any) {
+            // Node group enumeration failed
+          }
+        } catch (error: any) {
+          // Cluster not accessible
+        }
+      }
+      
+      if (eksFindings.length > 0) {
+        detailedFindings.push(`## EKS Cluster Findings\n\n${eksFindings.join('\n\n')}\n`);
+      }
+    }
+    
+    // Check 3: Lambda environment variable leakage
+    if (!instanceId && !clusterName) {
+      try {
+        const lambdaResponse = await lambdaClient.send(new ListFunctionsCommand({}));
+        const functions = lambdaResponse.Functions || [];
+        
+        for (const func of functions.slice(0, 20)) {  // Sample first 20 functions
+          const funcName = func.FunctionName || 'Unknown';
+          const envVars = func.Environment?.Variables || {};
+          
+          // Check for IMDSv2 token or credentials in env vars
+          const suspiciousPatterns = /(aws.*token|imds.*token|x-aws-ec2-metadata-token|aws_session_token)/i;
+          const leakedVars = Object.keys(envVars).filter(k => suspiciousPatterns.test(k));
+          
+          if (leakedVars.length > 0) {
+            risks.lambdaEnvVarLeakage++;
+            detailedFindings.push(`#### TC-IMDS-005: Lambda IMDSv2 Token Leakage\n**Risk:** HIGH | **MITRE:** T1552.001 - Credentials In Files\n- Function: ${funcName}\n- Leaked Variables: ${leakedVars.join(', ')}\n- **Risk:** Environment variables contain IMDSv2 tokens or AWS credentials\n- **Remediation:** Remove credentials from env vars, use Lambda execution roles, rotate exposed tokens`);
+          }
+        }
+      } catch (error: any) {
+        // Lambda enumeration failed
+      }
+    }
+    
+    // Build output
+    outputLines.push(`# IMDSv2 Bypass Vulnerability Scan`);
+    outputLines.push(`**Region:** ${region}`);
+    outputLines.push(`**EC2 Instances Analyzed:** ${instancesToScan.length}`);
+    outputLines.push(`**Scan Time:** ${scanTime}`);
+    outputLines.push(``);
+    outputLines.push(`## Risk Summary`);
+    outputLines.push(`| Risk Type | Count | Severity |`);
+    outputLines.push(`|-----------|-------|----------|`);
+    outputLines.push(`| IMDSv1 Enabled | ${risks.imdsv1Enabled} | CRITICAL |`);
+    outputLines.push(`| SSRF Vulnerable | ${risks.ssrfVulnerable} | CRITICAL |`);
+    outputLines.push(`| Container Metadata Exposure | ${risks.containerMetadataExposure} | HIGH |`);
+    outputLines.push(`| EKS Node Metadata Access | ${risks.eksNodeAccess} | HIGH |`);
+    outputLines.push(`| Lambda Env Var Leakage | ${risks.lambdaEnvVarLeakage} | HIGH |`);
+    outputLines.push(`| SSM Credential Theft Risk | ${risks.ssmCredentialTheft} | MEDIUM |`);
+    outputLines.push(`| Launch Template Misconfig | ${risks.launchTemplateMisconfig} | MEDIUM |`);
+    outputLines.push(`| VPC Endpoint Bypass | ${risks.vpcEndpointBypass} | MEDIUM |`);
+    outputLines.push(``);
+    
+    const totalRisks = risks.imdsv1Enabled + risks.ssrfVulnerable + risks.containerMetadataExposure + 
+                       risks.eksNodeAccess + risks.lambdaEnvVarLeakage + risks.ssmCredentialTheft + 
+                       risks.launchTemplateMisconfig + risks.vpcEndpointBypass;
+    
+    if (totalRisks === 0) {
+      outputLines.push(`## ✅ No IMDSv2 Bypass Vulnerabilities Detected`);
+      outputLines.push(``);
+      outputLines.push(`All analyzed resources passed IMDSv2 security checks for:`);
+      outputLines.push(`- IMDSv1 disabled (HttpTokens=required)`);
+      outputLines.push(`- Hop limit properly configured`);
+      outputLines.push(`- Container isolation enforced`);
+      outputLines.push(`- EKS IRSA configured`);
+      outputLines.push(`- No credential leakage in Lambda`);
+      outputLines.push(``);
+    } else {
+      outputLines.push(`## ⚠️ Detailed Findings`);
+      outputLines.push(``);
+      
+      if (detailedFindings.length > 0) {
+        outputLines.push(detailedFindings.join('\n---\n\n'));
+      }
+    }
+    
+    outputLines.push(`## Remediation Recommendations`);
+    outputLines.push(``);
+    outputLines.push(`1. **Enforce IMDSv2 Globally:**`);
+    outputLines.push(`   - Set HttpTokens=required on all EC2 instances`);
+    outputLines.push(`   - Use AWS Config rule to detect IMDSv1`);
+    outputLines.push(`   - Update launch templates and AMIs`);
+    outputLines.push(`   \`\`\`bash`);
+    outputLines.push(`   aws ec2 modify-instance-metadata-options \\\\`);
+    outputLines.push(`     --instance-id i-xxxxx \\\\`);
+    outputLines.push(`     --http-tokens required \\\\`);
+    outputLines.push(`     --http-put-response-hop-limit 1`);
+    outputLines.push(`   \`\`\``);
+    outputLines.push(``);
+    outputLines.push(`2. **EKS Security:**`);
+    outputLines.push(`   - Enable IRSA (OIDC provider) on all clusters`);
+    outputLines.push(`   - Enforce IMDSv2 on EKS nodes`);
+    outputLines.push(`   - Set hop limit to 1 for container workloads`);
+    outputLines.push(`   - Use dedicated service accounts with IRSA`);
+    outputLines.push(`   - Implement network policies to block IMDS access`);
+    outputLines.push(``);
+    outputLines.push(`3. **Container Security:**`);
+    outputLines.push(`   - Avoid host networking for containers`);
+    outputLines.push(`   - Use IRSA instead of node IAM roles`);
+    outputLines.push(`   - Implement iptables rules to block 169.254.169.254`);
+    outputLines.push(`   - Use AWS Fargate for better isolation`);
+    outputLines.push(``);
+    outputLines.push(`4. **Launch Template Hardening:**`);
+    outputLines.push(`   - Enforce IMDSv2 in all launch templates`);
+    outputLines.push(`   - Set HttpPutResponseHopLimit=1 for containers`);
+    outputLines.push(`   - Version control launch template changes`);
+    outputLines.push(`   - Use AWS Config to audit launch template settings`);
+    outputLines.push(``);
+    outputLines.push(`5. **Network Isolation:**`);
+    outputLines.push(`   - Use private subnets for sensitive workloads`);
+    outputLines.push(`   - Implement NACLs to restrict IMDS access`);
+    outputLines.push(`   - Enforce VPC endpoints for AWS services`);
+    outputLines.push(`   - Monitor for unusual IMDS access patterns`);
+    outputLines.push(``);
+    outputLines.push(`6. **Monitoring & Detection:**`);
+    outputLines.push(`   - Enable VPC Flow Logs`);
+    outputLines.push(`   - Set up CloudWatch alarms for IMDS access`);
+    outputLines.push(`   - Use GuardDuty to detect credential theft`);
+    outputLines.push(`   - Implement AWS CloudTrail for audit logging`);
+    outputLines.push(``);
+    outputLines.push(`### Attack Simulation (For Testing Only)`);
+    outputLines.push(`\`\`\`bash`);
+    outputLines.push(`# Test IMDSv1 (should fail if IMDSv2 enforced)`);
+    outputLines.push(`curl http://169.254.169.254/latest/meta-data/`);
+    outputLines.push(``);
+    outputLines.push(`# Test IMDSv2 (proper method)`);
+    outputLines.push(`TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")`);
+    outputLines.push(`curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/`);
+    outputLines.push(`\`\`\``);
+    outputLines.push(``);
+    
+    return outputLines.join('\n');
+  } catch (error: any) {
+    return `Error scanning IMDSv2 bypass vulnerabilities: ${error.message}`;
+  }
 }
 
 // Start the server

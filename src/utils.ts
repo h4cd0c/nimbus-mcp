@@ -115,7 +115,15 @@ export function validateInput(
   }
   
   // Sanitize: trim and remove control characters
-  const sanitized = input.toString().trim().replace(/[\x00-\x1f\x7f]/g, '');
+  let sanitized = input.toString().trim().replace(/[\x00-\x1f\x7f]/g, '');
+  
+  // SECURITY: Remove SQL injection patterns (OWASP MCP05)
+  const sqlPatterns = [
+    /(';|")|(--)|(\bDROP\b)|(\bDELETE\b)|(\bINSERT\b)|(\bUPDATE\b)|(\bEXEC\b)|(\bUNION\b)/gi
+  ];
+  sqlPatterns.forEach(pattern => {
+    sanitized = sanitized.replace(pattern, '');
+  });
   
   // Length check
   const maxLen = options.maxLength || 1000;
@@ -157,6 +165,16 @@ export function validateAWSResource(
   if (!value && !required) return undefined;
   if (!value && required) {
     throw new ValidationError(`${resourceType} is required`, { field: resourceType });
+  }
+  
+  // SECURITY: Check for path traversal in ARNs (OWASP MCP05)
+  if (resourceType === 'arn' && value) {
+    if (value.includes('..') || value.includes('//')) {
+      throw new ValidationError(
+        `Invalid arn format: path traversal detected`,
+        { provided: value }
+      );
+    }
   }
   
   const pattern = AWS_PATTERNS[resourceType];
